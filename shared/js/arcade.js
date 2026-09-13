@@ -39,8 +39,11 @@
     var start = function () {
       if (opts.bar !== false) Arcade.ui.mountBar();
       // Resolving the auth state at startup is part of boot, not something the
-      // first leaderboard click triggers.
-      Arcade.auth.init();
+      // first leaderboard click triggers. On a subdomain deploy that state
+      // lives in the hub's broker, so the session is shared rather than
+      // rebuilt per site.
+      if (Arcade.broker && Arcade.broker.shouldUse()) Arcade.broker.start();
+      else Arcade.auth.init();
     };
 
     if (document.readyState === 'loading') {

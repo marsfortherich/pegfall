@@ -292,7 +292,14 @@
 
   Arcade.auth = {
     init: init,
-    ready: function () { return init().then(function () { return readyPromise; }); },
+    /* Resolves once *a* backend has settled the auth state — the direct
+       Firebase path here, or the cross-subdomain broker driving it from the
+       hub's origin. It must not force the direct path, or asking "who is
+       playing?" would start a second, origin-local session. */
+    ready: function () {
+      if (!Arcade.broker || !Arcade.broker.active()) init();
+      return readyPromise;
+    },
     get state() { return state; },
     get user() { return state.user; },
     get status() { return state.status; },
@@ -314,6 +321,19 @@
     signOut: signOut,
     sendReset: sendReset,
     setDisplayName: setDisplayName,
-    describe: describe
+    describe: describe,
+
+    /* Used only by arcade-broker.js, which owns the session on the hub's
+       origin and mirrors it in here. Everything above reads this state, so
+       the UI never needs to know which backend it is talking to. */
+    _adopt: function (next) {
+      state.user = next.user || null;
+      state.profile = next.profile || null;
+      setState({ status: next.status || 'ready', error: next.error || null });
+      readyResolve(state);
+    },
+    _override: function (impl) {
+      Object.keys(impl).forEach(function (k) { Arcade.auth[k] = impl[k]; });
+    }
   };
 })(typeof window !== 'undefined' ? window : this);

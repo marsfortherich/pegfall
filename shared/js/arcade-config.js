@@ -101,6 +101,25 @@
   /* Absolute home of the arcade hub, for subdomain deploys. */
   Arcade.hubUrl = 'https://arcade.marsindustries.dev/';
 
+  /* --------------------------------------------------------------------
+     Shared sign-in across the subdomains.
+
+     A Firebase session belongs to one origin, so without this you would sign
+     in once per game. Every site instead talks to a hidden broker page served
+     from the hub, which holds the single session they all share. If it cannot
+     load, each site quietly falls back to its own sign-in.
+
+     `url` must be on the hub's origin. `testLocally` runs the same path on a
+     dev server, where everything is one origin anyway — useful for exercising
+     the RPC, pointless otherwise.
+     -------------------------------------------------------------------- */
+  Arcade.sso = {
+    enabled: true,
+    url: 'https://arcade.marsindustries.dev/shared/broker.html',
+    timeoutMs: 12000,
+    testLocally: false
+  };
+
   /**
    * True when this page is being browsed locally rather than served from the
    * real domains — a dev server, or a double-clicked file://.

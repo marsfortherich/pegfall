@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Arcade auth broker</title>
+<meta name="robots" content="noindex">
+<style>html,body{margin:0;background:transparent}</style>
+</head>
+<body>
+<!--
+  The arcade's single sign-on point.
+
+  Every game embeds this page in a hidden iframe. Because it is always served
+  from the hub's origin, the Firebase session it holds is the hub's session —
+  so signing in on any one site signs you in everywhere, which a per-origin
+  session could never do across four subdomains.
+
+  This works because all four sites share the registrable domain
+  marsindustries.dev. Browser storage partitioning is keyed on that, not on the
+  full origin, so a same-site iframe keeps the hub's real storage instead of a
+  partitioned copy. A broker on an unrelated domain would not.
+
+  The page holds no UI. It speaks a small postMessage RPC and does the Firebase
+  work on the caller's behalf, so a game never needs its own session.
+-->
+<script src="js/arcade-config.js"></script>
+<script src="js/arcade-auth.js"></script>
+<script src="js/arcade-scores.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  var TAG = '__arcade_broker';
+
+  /* ---------------------------------------------------------------- trust
+
+     This page performs privileged work: it writes as whoever is signed in.
+     Only the arcade's own sites may drive it, so every message is checked
+     against an allowlist built from the registry rather than being trusted
+     because it arrived. */
+  function allowedOrigins() {
+    var list = [];
+    function add(u) {
+      if (!u) return;
+      try { list.push(new URL(u, location.href).origin); } catch (e) { /* ignore */ }
+    }
+    Arcade.games.forEach(function (g) { add(g.url); });
+    add(Arcade.hubUrl);
+    add(location.origin);        // the hub itself, and local dev
+    return list;
+  }
+
+  var ALLOWED = allowedOrigins();
+
+  function trusted(origin) {
+    if (ALLOWED.indexOf(origin) !== -1) return true;
+    // A dev server puts every site on one origin, so anything local is fine.
+    return /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
+  }
+
+  var parentPort = window.parent;
+  if (parentPort === window) return;    // opened directly: nothing to broker
+
+  function post(origin, msg) {
+    msg[TAG] = 1;
+    try { parentPort.postMessage(msg, origin); } catch (e) { /* gone */ }
+  }
+
+  /* ------------------------------------------------------------ the calls */
+
+  var METHODS = {
+    getState: function () { return Promise.resolve(snapshot()); },
+
+    signIn: function (a) {
+      return Arcade.auth.signIn(a.email, a.password).then(snapshot);
+    },
+    register: function (a) {
+      return Arcade.auth.register(a.email, a.password, a.displayName).then(snapshot);
+    },
+    signOut: function () {
+      return Arcade.auth.signOut().then(snapshot);
+    },
+    sendReset: function (a) {
+      return Arcade.auth.sendReset(a.email).then(function () { return true; });
+    },
+    setDisplayName: function (a) {
+      return Arcade.auth.setDisplayName(a.name).then(function (n) {
+        return { name: n, state: snapshot() };
+      });
+    },
+
+    submit: function (a) {
+      return Arcade.scores.submit(a.gameId, a.score, a.meta);
+    },
+    board: function (a) {
+      return Arcade.scores.board(a.gameId, a.topN);
+    },
+    rankOf: function (a) {
+      return Arcade.scores.rankOf(a.gameId, a.score);
+    },
+    myStandings: function () {
+      // The registry object itself is not serialisable across origins, so the
+      // caller rebuilds it from the id.
+      return Arcade.scores.myStandings().then(function (all) {
+        return all.map(function (s) { return { gameId: s.game.id, entry: s.entry }; });
+      });
+    }
+  };
+
+  function snapshot() {
+    var st = Arcade.auth.state;
+    return {
+      status: st.status,
+      user: st.user ? { uid: st.user.uid, email: st.user.email, displayName: st.user.displayName } : null,
+      profile: st.profile ? { uid: st.profile.uid, displayName: st.profile.displayName } : null,
+      error: st.error || null
+    };
+  }
+
+  /* ---------------------------------------------------------------- wiring */
+
+  window.addEventListener('message', function (e) {
+    if (!e.data || e.data[TAG] !== 1 || !e.data.method) return;
+    if (!trusted(e.origin)) return;
+
+    var id = e.data.id;
+    var fn = METHODS[e.data.method];
+    if (!fn) {
+      post(e.origin, { id: id, ok: false, error: 'Unknown method: ' + e.data.method });
+      return;
+    }
+
+    Promise.resolve()
+      .then(function () { return fn(e.data.args || {}); })
+      .then(function (result) { post(e.origin, { id: id, ok: true, result: result }); })
+      .catch(function (err) {
+        post(e.origin, {
+          id: id, ok: false,
+          error: Arcade.auth.describe(err),
+          code: (err && err.code) || (err && err.message) || null
+        });
+      });
+  });
+
+  /* The one page that embedded us. Established once, from the referrer, and
+     checked against the allowlist — pushes then go to that exact origin rather
+     than to '*', so a session state is never broadcast to whoever happens to
+     be listening. */
+  var host = (function () {
+    try { return new URL(document.referrer).origin; } catch (e) { return null; }
+  })();
+  if (!host || !trusted(host)) host = null;
+
+  // Push session changes out, so signing out in one game reaches the others.
+  Arcade.auth.onChange(function () {
+    if (host) post(host, { event: 'auth', state: snapshot() });
+  });
+
+  Arcade.auth.init().then(function () {
+    if (host) post(host, { event: 'ready', state: snapshot() });
+  });
+})();
+</script>
+</body>
+</html>
