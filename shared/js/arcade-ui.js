@@ -1,0 +1,677 @@
+/* ============================================================================
+   arcade-ui.js — the shared chrome: arcade bar, auth dialog, leaderboard,
+   account panel and toasts.
+
+   Every widget here is built from the `.ac-*` components in arcade.css, so all
+   three games get pixel-identical account and leaderboard surfaces while their
+   own screens stay exactly as they were.
+   ========================================================================= */
+(function (global) {
+  'use strict';
+
+  var Arcade = global.Arcade = global.Arcade || {};
+  var doc = global.document;
+
+  var mounted = false;
+  var bar = null;
+  var switcher = null;
+  var currentGameId = null;
+
+  /* ------------------------------------------------------------- elements */
+
+  function el(tag, cls, text) {
+    var n = doc.createElement(tag);
+    if (cls) n.className = cls;
+    if (text !== undefined && text !== null) n.textContent = text;
+    return n;
+  }
+
+  function btn(label, cls, onClick) {
+    var b = el('button', 'ac-btn ' + (cls || ''), label);
+    b.type = 'button';
+    if (onClick) b.addEventListener('click', onClick);
+    return b;
+  }
+
+  function initials(name) {
+    var parts = String(name || '?').trim().split(/\s+/);
+    var s = (parts[0] || '?')[0] + (parts.length > 1 ? parts[parts.length - 1][0] : '');
+    return s.toUpperCase();
+  }
+
+  function fmt(n) {
+    if (n === null || n === undefined) return '—';
+    if (!isFinite(n)) return '∞';
+    if (Math.abs(n) >= 1e15) return Number(n).toExponential(2).replace('e+', 'e');
+    return Math.round(n).toLocaleString('en-US');
+  }
+
+  function rankText(rank) {
+    if (rank === null || rank === undefined) return '—';
+    if (typeof rank === 'object' && rank.atLeast) return rank.atLeast + '+';
+    return '#' + rank;
+  }
+
+  /* --------------------------------------------------------------- toasts */
+
+  function toastHost() {
+    var host = doc.querySelector('.ac-toasts');
+    if (!host) {
+      host = el('div', 'ac-toasts ac-root');
+      doc.body.appendChild(host);
+    }
+    return host;
+  }
+
+  function toast(message, kind, ms) {
+    var t = el('div', 'ac-toast' + (kind ? ' ac-toast--' + kind : ''), message);
+    toastHost().appendChild(t);
+    global.setTimeout(function () {
+      t.classList.add('is-out');
+      global.setTimeout(function () { if (t.parentNode) t.parentNode.removeChild(t); }, 260);
+    }, ms || 3200);
+    return t;
+  }
+
+  /* ---------------------------------------------------------------- modal */
+
+  var openModalEl = null;
+
+  function closeModal() {
+    if (openModalEl && openModalEl.parentNode) openModalEl.parentNode.removeChild(openModalEl);
+    openModalEl = null;
+  }
+
+  /**
+   * @param opts { title, sub, wide, body(bodyEl, api), foot(footEl, api) }
+   * The api handed to the builders is { close, setBody, box }.
+   */
+  function modal(opts) {
+    closeModal();
+    var wrap = el('div', 'ac-modal ac-root');
+    var box = el('div', 'ac-modal__box' + (opts.wide ? ' ac-modal__box--wide' : ''));
+
+    var head = el('div', 'ac-modal__head');
+    var titleWrap = el('div');
+    titleWrap.style.flex = '1';
+    var h = el('h2', 'ac-modal__title', opts.title || '');
+    titleWrap.appendChild(h);
+    if (opts.sub) titleWrap.appendChild(el('p', 'ac-modal__sub', opts.sub));
+    head.appendChild(titleWrap);
+    var x = el('button', 'ac-modal__x', '×');
+    x.type = 'button';
+    x.setAttribute('aria-label', 'Close');
+    x.addEventListener('click', closeModal);
+    head.appendChild(x);
+    box.appendChild(head);
+
+    var body = el('div', 'ac-modal__body');
+    box.appendChild(body);
+    var foot = el('div', 'ac-modal__foot');
+    box.appendChild(foot);
+
+    var api = {
+      close: closeModal,
+      box: box,
+      body: body,
+      foot: foot,
+      setTitle: function (t, s) {
+        h.textContent = t;
+        if (s !== undefined) {
+          var p = titleWrap.querySelector('.ac-modal__sub');
+          if (!p) { p = el('p', 'ac-modal__sub'); titleWrap.appendChild(p); }
+          p.textContent = s;
+        }
+      }
+    };
+
+    if (opts.body) opts.body(body, api);
+    if (opts.foot) opts.foot(foot, api);
+
+    wrap.addEventListener('mousedown', function (e) { if (e.target === wrap) closeModal(); });
+    wrap.appendChild(box);
+    doc.body.appendChild(wrap);
+    openModalEl = wrap;
+    return api;
+  }
+
+  doc.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && openModalEl) {
+      e.stopPropagation();
+      closeModal();
+    }
+  }, true);
+
+  /* ----------------------------------------------------------- auth panel */
+
+  function showAuth(initialTab) {
+    if (!Arcade.isConfigured()) {
+      showOffline();
+      return;
+    }
+
+    var tab = initialTab === 'register' ? 'register' : 'signin';
+
+    modal({
+      title: 'Arcade account',
+      sub: 'One account across every game in the arcade.',
+      body: function (body, api) {
+        var tabs = el('div', 'ac-tabs');
+        var tSignIn = el('button', 'ac-tab', 'Sign in');
+        var tRegister = el('button', 'ac-tab', 'Create account');
+        tSignIn.type = tRegister.type = 'button';
+        tabs.appendChild(tSignIn);
+        tabs.appendChild(tRegister);
+        body.appendChild(tabs);
+
+        var form = el('form');
+        form.setAttribute('novalidate', 'novalidate');
+        body.appendChild(form);
+
+        function render() {
+          tSignIn.setAttribute('aria-selected', tab === 'signin' ? 'true' : 'false');
+          tRegister.setAttribute('aria-selected', tab === 'register' ? 'true' : 'false');
+          form.innerHTML = '';
+
+          var errBox = el('div', 'ac-error ac-hidden');
+          form.appendChild(errBox);
+
+          var nameInput = null;
+          if (tab === 'register') {
+            nameInput = field(form, 'Display name', 'text', 'Shown on the leaderboards');
+            nameInput.maxLength = Arcade.options.maxNameLength;
+            nameInput.autocomplete = 'nickname';
+          }
+          var emailInput = field(form, 'Email', 'email', 'you@example.com');
+          emailInput.autocomplete = 'email';
+          var passInput = field(form, 'Password', 'password',
+            tab === 'register' ? 'at least 6 characters' : '');
+          passInput.autocomplete = tab === 'register' ? 'new-password' : 'current-password';
+
+          var submit = btn(tab === 'register' ? 'Create account' : 'Sign in',
+            'ac-btn--primary ac-btn--block ac-btn--lg');
+          submit.type = 'submit';
+          form.appendChild(submit);
+
+          if (tab === 'signin') {
+            var forgot = btn('Forgot password', 'ac-btn--ghost ac-btn--sm ac-btn--block', function () {
+              if (!emailInput.value.trim()) { fail('Enter your email first, then press this again.'); return; }
+              Arcade.auth.sendReset(emailInput.value).then(function () {
+                ok('Reset email sent to ' + emailInput.value.trim() + '.');
+              }).catch(function (e) { fail(Arcade.auth.describe(e)); });
+            });
+            forgot.style.marginTop = '8px';
+            form.appendChild(forgot);
+          }
+
+          var note = el('div', 'ac-note');
+          note.style.marginTop = '14px';
+          note.textContent = tab === 'register'
+            ? 'Your email is only used to sign in. Other players see your display name.'
+            : 'Signed in on this device until you sign out.';
+          form.appendChild(note);
+
+          function fail(msg) {
+            errBox.className = 'ac-error';
+            errBox.textContent = msg;
+          }
+          function ok(msg) {
+            errBox.className = 'ac-ok';
+            errBox.textContent = msg;
+          }
+
+          form.addEventListener('submit', function (e) {
+            e.preventDefault();
+            errBox.className = 'ac-error ac-hidden';
+            submit.disabled = true;
+            var done = function () { submit.disabled = false; };
+
+            var p = tab === 'register'
+              ? Arcade.auth.register(emailInput.value, passInput.value, nameInput.value)
+              : Arcade.auth.signIn(emailInput.value, passInput.value);
+
+            p.then(function () {
+              api.close();
+              toast('Signed in as ' + Arcade.auth.displayName(), 'good');
+            }).catch(function (err) {
+              fail(Arcade.auth.describe(err));
+              done();
+            });
+          });
+        }
+
+        tSignIn.addEventListener('click', function () { tab = 'signin'; render(); });
+        tRegister.addEventListener('click', function () { tab = 'register'; render(); });
+        render();
+      }
+    });
+  }
+
+  function field(form, label, type, placeholder) {
+    var wrap = el('div', 'ac-field');
+    var l = el('label', null, label);
+    var input = el('input', 'ac-input');
+    input.type = type;
+    if (placeholder) input.placeholder = placeholder;
+    var id = 'ac-f-' + Math.random().toString(36).slice(2, 8);
+    input.id = id;
+    l.setAttribute('for', id);
+    wrap.appendChild(l);
+    wrap.appendChild(input);
+    form.appendChild(wrap);
+    return input;
+  }
+
+  function showOffline() {
+    modal({
+      title: 'Arcade offline',
+      sub: 'Accounts and leaderboards are not configured.',
+      body: function (body) {
+        var p = el('div', 'ac-note');
+        p.innerHTML = 'Every game still plays exactly as it does online — ' +
+          'runs, unlocks and records are kept in this browser.<br><br>' +
+          'To switch the arcade on, drop a Firebase web config into ' +
+          '<b>shared/js/arcade-config.js</b> and run <b>python tools/sync-shared.py</b>. ' +
+          'Setup steps are in <b>ARCADE.md</b>.';
+        body.appendChild(p);
+      },
+      foot: function (foot, api) { foot.appendChild(btn('Close', '', api.close)); }
+    });
+  }
+
+  /* ---------------------------------------------------------- leaderboard */
+
+  function leaderboardRows(host, data, game) {
+    host.innerHTML = '';
+
+    if (data.offline) {
+      host.appendChild(emptyNote('Leaderboards are offline. See ARCADE.md to connect a Firebase project.'));
+      return;
+    }
+    if (data.error) {
+      host.appendChild(emptyNote(data.error));
+      return;
+    }
+
+    var head = el('div', 'ac-lb__head');
+    head.appendChild(el('span', null, '#'));
+    head.appendChild(el('span', null, 'Player'));
+    head.appendChild(el('span', null, game.scoreLabel));
+    host.appendChild(head);
+
+    var list = el('div', 'ac-lb');
+    if (!data.rows.length) {
+      list.appendChild(emptyNote('No scores yet. Finish a run and the board is yours.'));
+    }
+    data.rows.forEach(function (r) { list.appendChild(row(r, game)); });
+    host.appendChild(list);
+
+    // The player's own standing, when they are not already in the top rows.
+    if (data.you && !data.youInTop) {
+      var strip = el('div', 'ac-standing');
+      var cap = el('div', 'ac-lb__head');
+      cap.appendChild(el('span', null, ''));
+      cap.appendChild(el('span', null, 'Your standing'));
+      cap.appendChild(el('span', null, game.scoreLabel));
+      strip.appendChild(el('div', 'ac-lb__gap', '···'));
+      strip.appendChild(cap);
+      strip.appendChild(row(data.you, game));
+      host.appendChild(strip);
+    } else if (!data.you && Arcade.auth.isSignedIn()) {
+      host.appendChild(emptyNote('You have not posted a score in ' + game.name + ' yet.'));
+    } else if (!Arcade.auth.isSignedIn()) {
+      var signin = el('div', 'ac-standing');
+      var note = el('div', 'ac-note');
+      note.style.textAlign = 'center';
+      note.style.marginBottom = '10px';
+      note.textContent = 'Sign in to post your scores and see your rank.';
+      signin.appendChild(note);
+      var b = btn('Sign in', 'ac-btn--primary ac-btn--block', function () { showAuth('signin'); });
+      signin.appendChild(b);
+      host.appendChild(signin);
+    }
+  }
+
+  function row(r, game) {
+    var n = el('div', 'ac-lb__row' + (r.you ? ' ac-lb__row--you' : '') +
+      (r.rank <= 3 ? ' ac-lb__row--' + r.rank : ''));
+    n.appendChild(el('span', 'ac-lb__rank', typeof r.rank === 'object' ? rankText(r.rank) : String(r.rank)));
+
+    var nameCell = el('span', 'ac-lb__name', r.name + (r.you ? ' (you)' : ''));
+    var bits = [];
+    (game.metaFields || []).forEach(function (f) {
+      if (r.meta && r.meta[f] !== undefined) bits.push(f + ' ' + r.meta[f]);
+    });
+    if (r.plays) bits.push(r.plays + (r.plays === 1 ? ' run' : ' runs'));
+    if (bits.length) nameCell.appendChild(el('span', 'ac-lb__meta', bits.join(' · ')));
+    n.appendChild(nameCell);
+
+    n.appendChild(el('span', 'ac-lb__score', fmt(r.score)));
+    return n;
+  }
+
+  function emptyNote(text) {
+    return el('div', 'ac-lb__empty', text);
+  }
+
+  function showLeaderboard(gameId) {
+    var id = gameId || currentGameId || (Arcade.games[0] && Arcade.games[0].id);
+    var game = Arcade.gameById(id);
+
+    modal({
+      wide: true,
+      title: 'Leaderboard',
+      sub: game.name + ' — top ' + Arcade.options.topN + ' by ' + game.scoreLabel.toLowerCase(),
+      body: function (body, api) {
+        // A row of game tabs, so the leaderboard is a platform surface rather
+        // than a per-game one.
+        if (Arcade.games.length > 1) {
+          var tabs = el('div', 'ac-tabs');
+          Arcade.games.forEach(function (g) {
+            var t = el('button', 'ac-tab', g.name);
+            t.type = 'button';
+            t.setAttribute('aria-selected', g.id === id ? 'true' : 'false');
+            t.addEventListener('click', function () {
+              if (g.id === id) return;
+              id = g.id;
+              game = g;
+              Array.prototype.forEach.call(tabs.children, function (c) {
+                c.setAttribute('aria-selected', c === t ? 'true' : 'false');
+              });
+              api.setTitle('Leaderboard', g.name + ' — top ' + Arcade.options.topN +
+                ' by ' + g.scoreLabel.toLowerCase());
+              load();
+            });
+            tabs.appendChild(t);
+          });
+          body.appendChild(tabs);
+        }
+
+        var host = el('div');
+        body.appendChild(host);
+
+        function load() {
+          host.innerHTML = '';
+          host.appendChild(el('div', 'ac-spinner'));
+          Arcade.scores.board(id).then(function (data) {
+            leaderboardRows(host, data, game);
+          });
+        }
+        load();
+      },
+      foot: function (foot, api) { foot.appendChild(btn('Close', '', api.close)); }
+    });
+  }
+
+  /* -------------------------------------------------------- account panel */
+
+  function showAccount() {
+    if (!Arcade.auth.isSignedIn()) { showAuth('signin'); return; }
+
+    modal({
+      title: 'Your account',
+      body: function (body, api) {
+        var who = el('div');
+        who.style.display = 'flex';
+        who.style.alignItems = 'center';
+        who.style.gap = '12px';
+        who.style.marginBottom = '18px';
+        var av = el('div', 'ac-avatar ac-avatar--lg', initials(Arcade.auth.displayName()));
+        who.appendChild(av);
+        var text = el('div');
+        var nm = el('div', null, Arcade.auth.displayName());
+        nm.style.fontWeight = '800';
+        nm.style.fontSize = '16px';
+        text.appendChild(nm);
+        text.appendChild(el('div', 'ac-note', (Arcade.auth.user && Arcade.auth.user.email) || ''));
+        who.appendChild(text);
+        body.appendChild(who);
+
+        /* rename */
+        var form = el('form');
+        var input = field(form, 'Display name', 'text', '');
+        input.value = Arcade.auth.displayName();
+        input.maxLength = Arcade.options.maxNameLength;
+        var msg = el('div', 'ac-note');
+        msg.style.marginBottom = '10px';
+        form.appendChild(msg);
+        var save = btn('Save name', 'ac-btn--sm', null);
+        save.type = 'submit';
+        form.appendChild(save);
+        form.addEventListener('submit', function (e) {
+          e.preventDefault();
+          save.disabled = true;
+          Arcade.auth.setDisplayName(input.value).then(function (n) {
+            msg.textContent = 'Saved. Leaderboards now show ' + n + '.';
+            save.disabled = false;
+            refreshBar();
+          }).catch(function (err) {
+            msg.textContent = Arcade.auth.describe(err);
+            save.disabled = false;
+          });
+        });
+        body.appendChild(form);
+
+        /* standings across every game */
+        var standings = el('div');
+        standings.style.marginTop = '20px';
+        standings.appendChild(el('div', 'ac-cap', 'Your standing'));
+        var list = el('div', 'ac-lb');
+        list.style.marginTop = '8px';
+        list.appendChild(el('div', 'ac-spinner'));
+        standings.appendChild(list);
+        body.appendChild(standings);
+
+        Arcade.scores.myStandings().then(function (all) {
+          list.innerHTML = '';
+          all.forEach(function (s) {
+            var r = el('div', 'ac-lb__row');
+            r.appendChild(el('span', 'ac-lb__rank', s.entry ? rankText(s.entry.rank) : '—'));
+            var nameCell = el('span', 'ac-lb__name', s.game.name);
+            nameCell.appendChild(el('span', 'ac-lb__meta', s.entry
+              ? s.game.scoreLabel + ' · ' + s.entry.plays +
+                (s.entry.plays === 1 ? ' run' : ' runs')
+              : 'no score yet'));
+            r.appendChild(nameCell);
+            r.appendChild(el('span', 'ac-lb__score', s.entry ? fmt(s.entry.score) : '—'));
+            list.appendChild(r);
+          });
+        });
+      },
+      foot: function (foot, api) {
+        foot.appendChild(btn('Leaderboards', '', function () { showLeaderboard(currentGameId); }));
+        foot.appendChild(btn('Sign out', 'ac-btn--danger', function () {
+          Arcade.auth.signOut().then(function () {
+            api.close();
+            toast('Signed out.', 'gold');
+          });
+        }));
+      }
+    });
+  }
+
+  /* ------------------------------------------------------------ arcade bar */
+
+  function gameHref(g) {
+    if (g.id === currentGameId) return null;
+    return Arcade.gameUrl(g);
+  }
+
+  function toggleSwitcher() {
+    if (switcher) { closeSwitcher(); return; }
+    switcher = el('div', 'ac-switch ac-root');
+    switcher.appendChild(el('div', 'ac-switch__title ac-cap', 'Roguelike Arcade'));
+    Arcade.games.forEach(function (g) {
+      var href = gameHref(g);
+      var a = doc.createElement('a');
+      if (href) a.href = href;
+      else a.setAttribute('aria-current', 'true');
+      a.appendChild(el('span', 'ac-switch__glyph', g.glyph));
+      var label = el('span', null, g.name);
+      label.appendChild(el('span', 'ac-switch__sub', g.id === currentGameId ? 'you are here' : g.tagline));
+      a.appendChild(label);
+      switcher.appendChild(a);
+    });
+    var hub = doc.createElement('a');
+    hub.href = Arcade.hubHref();
+    hub.appendChild(el('span', 'ac-switch__glyph', '◆'));
+    var hubLabel = el('span', null, 'Arcade hub');
+    hubLabel.appendChild(el('span', 'ac-switch__sub', 'all games, all boards'));
+    hub.appendChild(hubLabel);
+    switcher.appendChild(hub);
+
+    doc.body.appendChild(switcher);
+    global.setTimeout(function () { doc.addEventListener('mousedown', outside); }, 0);
+  }
+
+  function outside(e) {
+    if (switcher && !switcher.contains(e.target) && bar && !bar.contains(e.target)) closeSwitcher();
+  }
+
+  function closeSwitcher() {
+    if (switcher && switcher.parentNode) switcher.parentNode.removeChild(switcher);
+    switcher = null;
+    doc.removeEventListener('mousedown', outside);
+  }
+
+  function mountBar() {
+    if (mounted) return bar;
+    mounted = true;
+
+    bar = el('div', 'ac-bar ac-root');
+
+    var mark = el('button', 'ac-bar__mark');
+    mark.type = 'button';
+    mark.title = 'Switch game';
+    mark.appendChild(el('span', 'ac-bar__diamond'));
+    mark.appendChild(el('span', null, 'Arcade'));
+    mark.addEventListener('click', function (e) { e.stopPropagation(); toggleSwitcher(); });
+    bar.appendChild(mark);
+
+    var lb = el('button', 'ac-bar__btn', 'Leaderboard');
+    lb.type = 'button';
+    lb.addEventListener('click', function () { showLeaderboard(currentGameId); });
+    bar.appendChild(lb);
+
+    var account = el('button', 'ac-bar__btn');
+    account.type = 'button';
+    account.addEventListener('click', function () {
+      if (!Arcade.isConfigured()) showOffline();
+      else if (Arcade.auth.isSignedIn()) showAccount();
+      else showAuth('signin');
+    });
+    bar.appendChild(account);
+    bar._account = account;
+
+    doc.body.appendChild(bar);
+    refreshBar();
+    Arcade.auth.onChange(refreshBar);
+    measureBar();
+    return bar;
+  }
+
+  /**
+   * Publish the bar's real size as --ac-bar-w / --ac-bar-h.
+   *
+   * The bar is fixed to the top-right of a game that knows nothing about it,
+   * and its width changes with the signed-in player's name. Games reserve room
+   * with `calc(var(--ac-bar-w) + …)` rather than guessing a number that goes
+   * stale the moment someone signs in with a longer name.
+   */
+  function measureBar() {
+    if (!bar) return;
+    var apply = function () {
+      var r = bar.getBoundingClientRect();
+      var root = doc.documentElement.style;
+      root.setProperty('--ac-bar-w', Math.ceil(r.width) + 'px');
+      root.setProperty('--ac-bar-h', Math.ceil(r.height) + 'px');
+    };
+    apply();
+    if (global.ResizeObserver) new global.ResizeObserver(apply).observe(bar);
+    else global.addEventListener('resize', apply);
+  }
+
+  /** Redraw the account button for the current auth state. */
+  function refreshBar() {
+    if (!bar) return;
+    var b = bar._account;
+    b.innerHTML = '';
+    var st = Arcade.auth.status;
+
+    if (!Arcade.isConfigured()) {
+      b.className = 'ac-bar__btn';
+      b.appendChild(el('span', null, 'Offline'));
+      b.title = 'Accounts are not configured — see ARCADE.md';
+      return;
+    }
+    if (st === 'connecting' || st === 'idle') {
+      b.className = 'ac-bar__btn';
+      b.appendChild(el('span', null, 'Connecting…'));
+      return;
+    }
+    if (Arcade.auth.isSignedIn()) {
+      var name = Arcade.auth.displayName();
+      b.className = 'ac-bar__btn ac-bar__btn--signed';
+      b.appendChild(el('span', 'ac-avatar', initials(name)));
+      b.appendChild(el('span', null, name));
+      b.title = 'Your account';
+    } else {
+      b.className = 'ac-bar__btn';
+      b.appendChild(el('span', null, 'Sign in'));
+      b.title = 'Sign in to post scores';
+    }
+  }
+
+  /* ------------------------------------------------- in-game entry points */
+
+  /**
+   * A row of arcade buttons a game can append to its own menu or end screen.
+   * Uses `.ac-btn`, so it looks the same in all three games.
+   */
+  function inlineActions(opts) {
+    opts = opts || {};
+    var row = el('div', 'ac-inline ac-root');
+    row.appendChild(btn(opts.leaderboardLabel || 'Leaderboard', 'ac-btn--sm', function () {
+      showLeaderboard(opts.gameId || currentGameId);
+    }));
+    var accountBtn = btn('', 'ac-btn--sm', function () {
+      if (!Arcade.isConfigured()) showOffline();
+      else if (Arcade.auth.isSignedIn()) showAccount();
+      else showAuth('signin');
+    });
+    row.appendChild(accountBtn);
+
+    function sync() {
+      accountBtn.textContent = !Arcade.isConfigured() ? 'Arcade offline'
+        : Arcade.auth.isSignedIn() ? Arcade.auth.displayName()
+        : 'Sign in';
+    }
+    sync();
+    var off = Arcade.auth.onChange(sync);
+    // Games rebuild their overlays freely; drop the listener when the node goes.
+    if (global.MutationObserver) {
+      var mo = new global.MutationObserver(function () {
+        if (!doc.body.contains(row)) { off(); mo.disconnect(); }
+      });
+      mo.observe(doc.body, { childList: true, subtree: true });
+    }
+    return row;
+  }
+
+  Arcade.ui = {
+    mountBar: mountBar,
+    refreshBar: refreshBar,
+    showAuth: showAuth,
+    showAccount: showAccount,
+    showLeaderboard: showLeaderboard,
+    showOffline: showOffline,
+    inlineActions: inlineActions,
+    toast: toast,
+    modal: modal,
+    closeModal: closeModal,
+    button: btn,
+    fmt: fmt,
+    rankText: rankText,
+    setGame: function (id) { currentGameId = id; }
+  };
+})(typeof window !== 'undefined' ? window : this);

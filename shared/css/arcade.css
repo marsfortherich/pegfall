@@ -1,0 +1,656 @@
+/* ============================================================================
+   ARCADE — the shared design system.
+
+   One stylesheet, dropped into every game. Everything here is namespaced with
+   an `ac-` prefix (class names and custom properties alike) so it can never
+   collide with a game's own CSS. Games keep their own palette and layout; this
+   file supplies the shared *language*: one spacing scale, one radius scale,
+   one elevation recipe, one set of controls, and the account/leaderboard
+   chrome that makes the three games read as one platform.
+
+   A game opts into its theme with `<html data-arcade-game="pegfall">`.
+   ========================================================================= */
+
+:root {
+  /* ---- type ------------------------------------------------------------ */
+  --ac-font-ui: "Trebuchet MS", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --ac-font-num: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --ac-fs-micro: 9.5px;
+  --ac-fs-tiny: 11px;
+  --ac-fs-sm: 12.5px;
+  --ac-fs-md: 14px;
+  --ac-fs-lg: 18px;
+  --ac-fs-xl: 24px;
+  --ac-fs-display: 34px;
+
+  --ac-track-caps: .16em;   /* the platform's uppercase label tracking */
+
+  /* ---- space (4px base) ------------------------------------------------ */
+  --ac-s1: 4px;
+  --ac-s2: 8px;
+  --ac-s3: 12px;
+  --ac-s4: 16px;
+  --ac-s5: 24px;
+  --ac-s6: 32px;
+
+  /* ---- shape ----------------------------------------------------------- */
+  --ac-r-sm: 6px;
+  --ac-r-md: 10px;
+  --ac-r-lg: 16px;
+  --ac-r-pill: 999px;
+
+  /* ---- elevation -------------------------------------------------------
+     The "cardboard lift": a hard bottom edge plus a soft cast shadow. Both
+     casino games already drew their panels this way; adopting it everywhere
+     is most of what makes the set feel like one toolbox. */
+  --ac-lift-1: 0 2px 0 rgba(0, 0, 0, .45);
+  --ac-lift-2: 0 4px 0 rgba(0, 0, 0, .45), 0 10px 22px rgba(0, 0, 0, .35);
+  --ac-lift-3: 0 8px 0 rgba(0, 0, 0, .5), 0 22px 48px rgba(0, 0, 0, .45);
+
+  /* ---- neutral surfaces (per-game themes tint these) ------------------- */
+  --ac-surface-0: #0d1117;
+  --ac-surface-1: #161c25;
+  --ac-surface-2: #1f2731;
+  --ac-surface-3: #2b3541;
+  --ac-line: #3a4552;
+  --ac-ink: #eef2f7;
+  --ac-ink-dim: #9aa6b3;
+
+  /* ---- semantic -------------------------------------------------------- */
+  --ac-accent: #4b8bd6;         /* the game's primary action colour */
+  --ac-accent-deep: #2c5a92;    /* its hard bottom edge */
+  --ac-accent-ink: #ffffff;     /* text on top of it */
+  --ac-gold: #d9b45b;
+  --ac-gold-deep: #9a7c2d;
+  --ac-good: #3fa96b;
+  --ac-bad: #d1524a;
+
+  /* ---- motion ---------------------------------------------------------- */
+  --ac-fast: 120ms ease;
+  --ac-slow: 240ms cubic-bezier(.2, .8, .3, 1);
+
+  /* ---- the arcade bar's footprint --------------------------------------
+     Measured and republished by arcade-ui.js whenever the bar changes size.
+     Games reserve room for the bar with
+         padding-right: calc(var(--ac-bar-w) + var(--ac-s4));
+     so the clearance tracks the signed-in player's name length instead of a
+     number that goes stale. These are the pre-measurement fallbacks. */
+  --ac-bar-w: 300px;
+  --ac-bar-h: 42px;
+
+  /* ---- stacking -------------------------------------------------------- */
+  --ac-z-bar: 400;
+  --ac-z-modal: 900;
+  --ac-z-toast: 960;
+}
+
+/* ============================================================================
+   Per-game themes. Same structure everywhere — only the hue moves.
+   ========================================================================= */
+
+html[data-arcade-game="pegfall"] {
+  --ac-surface-0: #070b11;
+  --ac-surface-1: #121822;
+  --ac-surface-2: #172030;
+  --ac-surface-3: #222d3f;
+  --ac-line: #2b3749;
+  --ac-ink: #e8eef7;
+  --ac-ink-dim: #8496ac;
+  --ac-accent: #79c0ff;
+  --ac-accent-deep: #2f6ea8;
+  --ac-accent-ink: #071019;
+  --ac-gold: #f2cc60;
+  --ac-gold-deep: #a8842d;
+  --ac-font-ui: var(--ac-font-num);
+}
+
+html[data-arcade-game="onemoreroll"] {
+  --ac-surface-0: #0b1410;
+  --ac-surface-1: #1a2129;
+  --ac-surface-2: #232c36;
+  --ac-surface-3: #2e3945;
+  --ac-line: #3d5165;
+  --ac-ink: #f4f1e8;
+  --ac-ink-dim: #9aa6b1;
+  --ac-accent: #0090ff;
+  --ac-accent-deep: #0060b8;
+  --ac-accent-ink: #ffffff;
+  --ac-gold: #f0a92c;
+  --ac-gold-deep: #b57715;
+  --ac-bad: #fe5f55;
+  --ac-font-ui: "Segoe UI", system-ui, -apple-system, "Trebuchet MS", sans-serif;
+}
+
+html[data-arcade-game="nolimit"] {
+  --ac-surface-0: #0a0d11;
+  --ac-surface-1: #171b21;
+  --ac-surface-2: #1f242c;
+  --ac-surface-3: #2a3039;
+  --ac-line: #39404b;
+  --ac-ink: #eae5d8;
+  --ac-ink-dim: #99a1ad;
+  --ac-accent: #c0392b;
+  --ac-accent-deep: #8a2318;
+  --ac-accent-ink: #fff4f0;
+  --ac-gold: #d9b45b;
+  --ac-gold-deep: #a8842d;
+}
+
+html[data-arcade-game="hub"] {
+  --ac-surface-0: #090d13;
+  --ac-surface-1: #141b24;
+  --ac-surface-2: #1d2531;
+  --ac-surface-3: #28323f;
+  --ac-line: #38434f;
+  --ac-accent: #d9b45b;
+  --ac-accent-deep: #9a7c2d;
+  --ac-accent-ink: #221a06;
+}
+
+/* ============================================================================
+   Primitives
+   ========================================================================= */
+
+.ac-root, .ac-root * { box-sizing: border-box; }
+
+/* Host games set their own body-level typography and, in one case, disable
+   text selection outright. The shared chrome states its own so it looks and
+   behaves identically in all three. */
+.ac-root input,
+.ac-root textarea { user-select: text; -webkit-user-select: text; }
+
+.ac-cap {
+  font-size: var(--ac-fs-micro);
+  letter-spacing: var(--ac-track-caps);
+  text-transform: uppercase;
+  color: var(--ac-ink-dim);
+}
+
+.ac-num { font-family: var(--ac-font-num); font-variant-numeric: tabular-nums; }
+
+.ac-hidden { display: none !important; }
+
+/* ---- buttons -------------------------------------------------------------
+   One button, four intents, three sizes. Every game's shared chrome uses
+   these; each game's own in-game buttons are left exactly as they were. */
+.ac-btn {
+  font-family: var(--ac-font-ui);
+  font-weight: 700;
+  font-size: var(--ac-fs-sm);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--ac-ink);
+  background: linear-gradient(180deg, var(--ac-surface-3), var(--ac-surface-2));
+  border: 1px solid var(--ac-line);
+  border-radius: var(--ac-r-md);
+  padding: 9px 16px;
+  cursor: pointer;
+  box-shadow: var(--ac-lift-1);
+  transition: filter var(--ac-fast), transform var(--ac-fast), box-shadow var(--ac-fast);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ac-s2);
+  line-height: 1.1;
+}
+.ac-btn:hover:not(:disabled) { filter: brightness(1.18); }
+.ac-btn:active:not(:disabled) { transform: translateY(2px); box-shadow: none; }
+.ac-btn:disabled { opacity: .45; cursor: not-allowed; box-shadow: none; }
+.ac-btn:focus-visible { outline: 2px solid var(--ac-gold); outline-offset: 2px; }
+
+.ac-btn--primary {
+  background: linear-gradient(180deg, var(--ac-accent), var(--ac-accent-deep));
+  border-color: var(--ac-accent);
+  color: var(--ac-accent-ink);
+}
+.ac-btn--gold {
+  background: linear-gradient(180deg, var(--ac-gold), var(--ac-gold-deep));
+  border-color: var(--ac-gold);
+  color: #241a04;
+}
+.ac-btn--danger {
+  background: linear-gradient(180deg, var(--ac-bad), #8c2f29);
+  border-color: var(--ac-bad);
+  color: #fff;
+}
+.ac-btn--ghost { background: transparent; box-shadow: none; }
+.ac-btn--sm { padding: 6px 11px; font-size: var(--ac-fs-tiny); }
+.ac-btn--lg { padding: 13px 26px; font-size: var(--ac-fs-md); }
+.ac-btn--block { width: 100%; }
+
+/* ---- surfaces ---------------------------------------------------------- */
+.ac-panel {
+  background: linear-gradient(180deg, var(--ac-surface-2), var(--ac-surface-1));
+  border: 1px solid var(--ac-line);
+  border-radius: var(--ac-r-md);
+  box-shadow: var(--ac-lift-2);
+  padding: var(--ac-s4);
+}
+
+.ac-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ac-s1);
+  background: var(--ac-surface-3);
+  border: 1px solid var(--ac-line);
+  border-radius: var(--ac-r-pill);
+  padding: 3px 10px;
+  font-size: var(--ac-fs-tiny);
+  color: var(--ac-ink-dim);
+}
+
+/* ---- fields ------------------------------------------------------------ */
+.ac-field { display: flex; flex-direction: column; gap: var(--ac-s1); margin-bottom: var(--ac-s3); }
+.ac-field > label {
+  font-size: var(--ac-fs-micro);
+  letter-spacing: var(--ac-track-caps);
+  text-transform: uppercase;
+  color: var(--ac-ink-dim);
+}
+.ac-input {
+  font-family: var(--ac-font-ui);
+  font-size: var(--ac-fs-md);
+  color: var(--ac-ink);
+  background: var(--ac-surface-0);
+  border: 1px solid var(--ac-line);
+  border-radius: var(--ac-r-sm);
+  padding: 10px 12px;
+  width: 100%;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: normal;
+  transition: border-color var(--ac-fast);
+}
+.ac-input:focus { outline: none; border-color: var(--ac-accent); }
+.ac-input::placeholder { color: rgba(154, 166, 179, .6); }
+
+.ac-note { font-size: var(--ac-fs-tiny); color: var(--ac-ink-dim); line-height: 1.55; }
+.ac-error {
+  font-size: var(--ac-fs-sm);
+  color: #ffd7d3;
+  background: rgba(209, 82, 74, .16);
+  border: 1px solid var(--ac-bad);
+  border-radius: var(--ac-r-sm);
+  padding: 8px 11px;
+  margin-bottom: var(--ac-s3);
+  line-height: 1.5;
+}
+.ac-ok {
+  font-size: var(--ac-fs-sm);
+  color: #d3ffe4;
+  background: rgba(63, 169, 107, .16);
+  border: 1px solid var(--ac-good);
+  border-radius: var(--ac-r-sm);
+  padding: 8px 11px;
+  margin-bottom: var(--ac-s3);
+}
+
+/* ============================================================================
+   The arcade bar — the single most recognisable shared element.
+   Fixed to the top-right of every game.
+   ========================================================================= */
+
+.ac-bar {
+  position: fixed;
+  top: 10px;
+  right: 12px;
+  z-index: var(--ac-z-bar);
+  display: flex;
+  align-items: center;
+  gap: var(--ac-s1);
+  padding: 5px 6px;
+  background: rgba(20, 27, 36, .86);
+  border: 1px solid var(--ac-line);
+  border-radius: var(--ac-r-pill);
+  box-shadow: var(--ac-lift-2);
+  backdrop-filter: blur(8px);
+  font-family: var(--ac-font-ui);
+  color: var(--ac-ink);
+  user-select: none;
+}
+
+.ac-bar__mark {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px 0 8px;
+  font-size: var(--ac-fs-micro);
+  letter-spacing: var(--ac-track-caps);
+  text-transform: uppercase;
+  color: var(--ac-gold);
+  border: 0;
+  border-right: 1px solid var(--ac-line);
+  margin-right: var(--ac-s1);
+  cursor: pointer;
+  background: none;
+  font-family: inherit;
+  font-weight: 700;
+}
+.ac-bar__mark:hover { filter: brightness(1.25); }
+.ac-bar__diamond {
+  width: 9px; height: 9px;
+  background: var(--ac-gold);
+  transform: rotate(45deg);
+  border-radius: 1px;
+}
+
+.ac-bar__btn {
+  font-family: var(--ac-font-ui);
+  font-weight: 700;
+  font-size: var(--ac-fs-tiny);
+  letter-spacing: .06em;
+  color: var(--ac-ink);
+  background: var(--ac-surface-2);
+  border: 1px solid transparent;
+  border-radius: var(--ac-r-pill);
+  padding: 6px 13px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  transition: background var(--ac-fast), border-color var(--ac-fast);
+}
+.ac-bar__btn:hover { background: var(--ac-surface-3); border-color: var(--ac-line); }
+.ac-bar__btn--signed { padding-left: 5px; }
+
+.ac-avatar {
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 10px;
+  font-weight: 800;
+  color: var(--ac-accent-ink);
+  background: linear-gradient(180deg, var(--ac-accent), var(--ac-accent-deep));
+  flex: none;
+}
+.ac-avatar--lg { width: 40px; height: 40px; font-size: 17px; }
+
+.ac-bar__state {
+  font-size: var(--ac-fs-micro);
+  color: var(--ac-ink-dim);
+  padding: 0 8px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+
+/* game switcher popover */
+.ac-switch {
+  position: fixed;
+  top: 52px;
+  right: 12px;
+  z-index: var(--ac-z-bar);
+  width: 250px;
+  padding: var(--ac-s2);
+  background: var(--ac-surface-1);
+  border: 1px solid var(--ac-line);
+  border-radius: var(--ac-r-md);
+  box-shadow: var(--ac-lift-3);
+  font-family: var(--ac-font-ui);
+}
+.ac-switch__title { padding: 4px 8px 8px; }
+.ac-switch a {
+  display: flex;
+  align-items: center;
+  gap: var(--ac-s2);
+  padding: 8px;
+  border-radius: var(--ac-r-sm);
+  color: var(--ac-ink);
+  text-decoration: none;
+  font-size: var(--ac-fs-sm);
+  font-weight: 700;
+}
+.ac-switch a:hover { background: var(--ac-surface-2); }
+.ac-switch a[aria-current="true"] { background: var(--ac-surface-3); cursor: default; }
+.ac-switch__glyph {
+  width: 26px; height: 26px;
+  border-radius: var(--ac-r-sm);
+  display: grid; place-items: center;
+  font-size: 14px;
+  background: var(--ac-surface-3);
+  border: 1px solid var(--ac-line);
+  flex: none;
+}
+.ac-switch__sub {
+  display: block;
+  font-size: var(--ac-fs-micro);
+  font-weight: 400;
+  color: var(--ac-ink-dim);
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+/* ============================================================================
+   Modal
+   ========================================================================= */
+
+.ac-modal {
+  position: fixed;
+  inset: 0;
+  z-index: var(--ac-z-modal);
+  background: rgba(4, 7, 11, .78);
+  backdrop-filter: blur(5px);
+  display: grid;
+  place-items: center;
+  padding: var(--ac-s4);
+  overflow-y: auto;
+  font-family: var(--ac-font-ui);
+  color: var(--ac-ink);
+}
+.ac-modal__box {
+  width: 100%;
+  max-width: 460px;
+  max-height: 92vh;
+  overflow-y: auto;
+  background: linear-gradient(180deg, var(--ac-surface-2), var(--ac-surface-1));
+  border: 1px solid var(--ac-line);
+  border-radius: var(--ac-r-lg);
+  box-shadow: var(--ac-lift-3);
+  animation: ac-rise var(--ac-slow);
+}
+.ac-modal__box--wide { max-width: 580px; }
+@keyframes ac-rise { from { transform: translateY(12px); opacity: 0; } }
+
+.ac-modal__head {
+  display: flex;
+  align-items: center;
+  gap: var(--ac-s3);
+  padding: var(--ac-s4) var(--ac-s5);
+  border-bottom: 1px solid var(--ac-line);
+}
+.ac-modal__title {
+  margin: 0;
+  font-size: var(--ac-fs-lg);
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  font-weight: 800;
+  flex: 1;
+}
+.ac-modal__sub {
+  margin: 2px 0 0;
+  font-size: var(--ac-fs-tiny);
+  color: var(--ac-ink-dim);
+  letter-spacing: .04em;
+  text-transform: none;
+  font-weight: 400;
+}
+.ac-modal__x {
+  background: none; border: none; cursor: pointer;
+  color: var(--ac-ink-dim); font-size: 22px; line-height: 1;
+  padding: 0 2px;
+}
+.ac-modal__x:hover { color: var(--ac-ink); }
+.ac-modal__body { padding: var(--ac-s5); }
+.ac-modal__foot {
+  padding: var(--ac-s3) var(--ac-s5) var(--ac-s5);
+  display: flex; gap: var(--ac-s2); justify-content: center; flex-wrap: wrap;
+}
+
+/* tabs */
+.ac-tabs {
+  display: flex;
+  gap: var(--ac-s1);
+  padding: var(--ac-s2);
+  background: var(--ac-surface-0);
+  border-radius: var(--ac-r-md);
+  margin-bottom: var(--ac-s4);
+}
+.ac-tab {
+  flex: 1;
+  font-family: var(--ac-font-ui);
+  font-weight: 700;
+  font-size: var(--ac-fs-tiny);
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--ac-ink-dim);
+  background: none;
+  border: none;
+  border-radius: var(--ac-r-sm);
+  padding: 8px;
+  cursor: pointer;
+}
+.ac-tab[aria-selected="true"] { background: var(--ac-surface-2); color: var(--ac-ink); box-shadow: var(--ac-lift-1); }
+
+/* ============================================================================
+   Leaderboard
+   ========================================================================= */
+
+.ac-lb { display: flex; flex-direction: column; gap: 3px; }
+.ac-lb__head {
+  display: grid;
+  grid-template-columns: 34px 1fr auto;
+  gap: var(--ac-s3);
+  padding: 0 var(--ac-s3) var(--ac-s2);
+  font-size: var(--ac-fs-micro);
+  letter-spacing: var(--ac-track-caps);
+  text-transform: uppercase;
+  color: var(--ac-ink-dim);
+}
+.ac-lb__row {
+  display: grid;
+  grid-template-columns: 34px 1fr auto;
+  gap: var(--ac-s3);
+  align-items: center;
+  padding: 9px var(--ac-s3);
+  background: var(--ac-surface-2);
+  border: 1px solid transparent;
+  border-radius: var(--ac-r-sm);
+  font-size: var(--ac-fs-sm);
+}
+.ac-lb__row--you { border-color: var(--ac-gold); background: rgba(217, 180, 91, .13); }
+.ac-lb__rank { font-family: var(--ac-font-num); font-weight: 800; color: var(--ac-ink-dim); text-align: right; }
+.ac-lb__row--1 .ac-lb__rank { color: var(--ac-gold); }
+.ac-lb__row--2 .ac-lb__rank { color: #cdd6e0; }
+.ac-lb__row--3 .ac-lb__rank { color: #c08457; }
+.ac-lb__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; }
+.ac-lb__meta {
+  display: block;
+  font-size: var(--ac-fs-micro);
+  color: var(--ac-ink-dim);
+  font-weight: 400;
+  letter-spacing: .04em;
+}
+.ac-lb__score {
+  font-family: var(--ac-font-num);
+  font-weight: 800;
+  color: var(--ac-gold);
+  font-variant-numeric: tabular-nums;
+}
+.ac-lb__gap { text-align: center; color: var(--ac-ink-dim); letter-spacing: .3em; padding: 2px 0; }
+.ac-lb__empty {
+  text-align: center;
+  color: var(--ac-ink-dim);
+  font-size: var(--ac-fs-sm);
+  padding: var(--ac-s5) 0;
+  line-height: 1.6;
+}
+
+/* the "your standing" strip that appears under the top five */
+.ac-standing {
+  margin-top: var(--ac-s4);
+  padding-top: var(--ac-s4);
+  border-top: 1px dashed var(--ac-line);
+}
+
+.ac-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--ac-s2); margin-top: var(--ac-s4); }
+.ac-stat {
+  background: var(--ac-surface-0);
+  border: 1px solid var(--ac-line);
+  border-radius: var(--ac-r-sm);
+  padding: var(--ac-s2);
+  text-align: center;
+}
+.ac-stat b { display: block; font-family: var(--ac-font-num); font-size: var(--ac-fs-lg); color: var(--ac-ink); }
+.ac-stat span { font-size: var(--ac-fs-micro); letter-spacing: .1em; text-transform: uppercase; color: var(--ac-ink-dim); }
+
+/* ============================================================================
+   Toast
+   ========================================================================= */
+
+.ac-toasts {
+  position: fixed;
+  top: 56px;
+  right: 12px;
+  z-index: var(--ac-z-toast);
+  display: flex;
+  flex-direction: column;
+  gap: var(--ac-s2);
+  align-items: flex-end;
+  pointer-events: none;
+  font-family: var(--ac-font-ui);
+}
+.ac-toast {
+  background: var(--ac-surface-1);
+  border: 1px solid var(--ac-line);
+  border-left: 3px solid var(--ac-accent);
+  border-radius: var(--ac-r-sm);
+  box-shadow: var(--ac-lift-2);
+  color: var(--ac-ink);
+  font-size: var(--ac-fs-sm);
+  padding: 9px 14px;
+  max-width: 300px;
+  animation: ac-toast-in var(--ac-slow);
+}
+.ac-toast--good { border-left-color: var(--ac-good); }
+.ac-toast--bad { border-left-color: var(--ac-bad); }
+.ac-toast--gold { border-left-color: var(--ac-gold); }
+.ac-toast.is-out { animation: ac-toast-out var(--ac-slow) forwards; }
+@keyframes ac-toast-in { from { opacity: 0; transform: translateX(16px); } }
+@keyframes ac-toast-out { to { opacity: 0; transform: translateX(16px); } }
+
+/* ---- spinner ----------------------------------------------------------- */
+.ac-spinner {
+  width: 18px; height: 18px;
+  border: 2px solid var(--ac-line);
+  border-top-color: var(--ac-accent);
+  border-radius: 50%;
+  animation: ac-spin .7s linear infinite;
+  margin: var(--ac-s5) auto;
+}
+@keyframes ac-spin { to { transform: rotate(360deg); } }
+
+/* ---- in-game entry points ---------------------------------------------
+   A row games can drop into their own menus and end screens. Deliberately
+   neutral so it sits happily inside each game's own overlay. */
+.ac-inline {
+  display: flex;
+  gap: var(--ac-s2);
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-top: var(--ac-s3);
+  font-family: var(--ac-font-ui);
+}
+
+@media (max-width: 720px) {
+  .ac-bar { top: 6px; right: 6px; }
+  .ac-bar__mark span { display: none; }
+  .ac-stats { grid-template-columns: 1fr 1fr; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ac-modal__box, .ac-toast { animation: none; }
+  .ac-btn { transition: none; }
+}

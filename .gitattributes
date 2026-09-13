@@ -1,0 +1,13 @@
+# Normalise to LF in the repository. A CRLF line ending inside a CSS
+# data: URI silently broke every procedural texture once already, and the
+# arcade ships inlined CSS in more than one game now.
+* text=auto eol=lf
+
+*.svg   text eol=lf
+*.json  text eol=lf
+*.yml   text eol=lf
+*.webmanifest text eol=lf
+
+# GitHub Pages reads the custom domain from this file; keep it a single
+# LF-terminated line.
+CNAME   text eol=lf

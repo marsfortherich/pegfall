@@ -1,0 +1,378 @@
+/* PEGFALL — dark arcade cabinet look. */
+:root {
+  --bg: #0b0f16;
+  --panel: #121822;
+  --panel-2: #172030;
+  --line: #263244;
+  --ink: #e8eef7;
+  --muted: #8496ac;
+  --gold: #f2cc60;
+  --good: #7ee787;
+  --hot: #ff7b72;
+  --cool: #79c0ff;
+  --rare: #d2a8ff;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: radial-gradient(1200px 700px at 50% -10%, #1a2534 0%, var(--bg) 60%);
+  color: var(--ink);
+  font-family: var(--mono);
+  overflow: hidden;
+}
+
+#app {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr) 260px;
+  gap: 14px;
+  height: 100%;
+  padding: 14px;
+}
+
+/* ------------------------------------------------------------------ panels */
+.panel {
+  background: linear-gradient(180deg, var(--panel) 0%, #0e131c 100%);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+.panel::-webkit-scrollbar { width: 8px; }
+.panel::-webkit-scrollbar-thumb { background: #24303f; border-radius: 8px; }
+
+.brand h1 {
+  margin: 0;
+  font-size: 26px;
+  letter-spacing: 5px;
+  background: linear-gradient(90deg, var(--gold), var(--hot) 60%, var(--rare));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.brand p { margin: 2px 0 14px; color: var(--muted); font-size: 10px; letter-spacing: 2px; text-transform: uppercase; }
+
+.stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 16px; }
+.stat {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 7px 9px;
+}
+.stat.wide { grid-column: span 2; }
+.stat span { display: block; font-size: 9px; letter-spacing: 1.4px; color: var(--muted); text-transform: uppercase; }
+.stat b { font-size: 17px; }
+.stat .gold { color: var(--gold); }
+.stat .seed { font-size: 13px; color: var(--cool); letter-spacing: 1px; }
+
+.block { margin-bottom: 18px; }
+.block h2 {
+  font-size: 10px; letter-spacing: 2px; text-transform: uppercase;
+  color: var(--muted); margin: 0 0 8px;
+  border-bottom: 1px solid var(--line); padding-bottom: 6px;
+}
+.muted { color: var(--muted); }
+.small { font-size: 11px; line-height: 1.6; }
+p.muted { margin: 6px 0; }
+
+/* ------------------------------------------------------------------ relics */
+.relics { display: flex; flex-direction: column; gap: 6px; }
+.relic {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--panel-2);
+  border: 1px solid var(--c);
+  border-left-width: 3px;
+  border-radius: 7px;
+  padding: 6px 8px;
+  cursor: help;
+}
+.relic .ico {
+  font-size: 10px; font-weight: 700; color: var(--c);
+  border: 1px solid var(--c); border-radius: 4px;
+  padding: 2px 4px; min-width: 26px; text-align: center;
+}
+.relic .nm { font-size: 11.5px; }
+
+.bag { display: flex; flex-direction: column; gap: 4px; }
+.bagitem {
+  display: flex; align-items: center; gap: 7px;
+  font-size: 11.5px; padding: 3px 4px; border-radius: 5px; cursor: help;
+}
+.bagitem:hover { background: var(--panel-2); }
+.bagitem i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.bagitem b { margin-left: auto; color: var(--muted); }
+
+/* ------------------------------------------------------------------- stage */
+.stage { display: flex; flex-direction: column; align-items: center; gap: 8px; min-height: 0; }
+
+.modifier {
+  width: 100%; max-width: 620px;
+  border: 1px solid var(--line); border-radius: 10px;
+  background: var(--panel);
+  padding: 7px 12px;
+  display: flex; align-items: baseline; gap: 10px;
+}
+.modifier b { font-size: 12px; letter-spacing: 1.5px; color: var(--cool); }
+.modifier span { font-size: 11px; color: var(--muted); }
+.modifier.empty b { color: var(--muted); }
+.modifier.boss { border-color: var(--hot); background: linear-gradient(90deg, #2a1620, var(--panel)); }
+.modifier.boss b { color: var(--hot); }
+
+.scorebar { width: 100%; max-width: 620px; }
+.scorenums { display: flex; align-items: baseline; gap: 7px; margin-bottom: 4px; }
+.scorenums .score { font-size: 24px; font-weight: 700; }
+.scorenums .sep, .scorenums .target { color: var(--muted); font-size: 14px; }
+.scorenums .pct { margin-left: auto; font-size: 11px; color: var(--muted); }
+.track { height: 9px; background: #0a0e15; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.fill {
+  height: 100%; width: 0;
+  background: linear-gradient(90deg, var(--cool), var(--rare));
+  transition: width 0.25s ease;
+}
+.fill.done { background: linear-gradient(90deg, var(--good), var(--gold)); }
+
+.boardwrap { position: relative; flex: 1; min-height: 0; display: flex; justify-content: center; }
+canvas#board {
+  height: 100%;
+  max-height: 100%;
+  aspect-ratio: 620 / 706;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #0b0f16;
+  cursor: crosshair;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+
+.handbar {
+  width: 100%; max-width: 620px;
+  display: flex; align-items: center; gap: 10px;
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: 10px; padding: 8px 12px;
+}
+.handlabel { font-size: 10px; letter-spacing: 1.5px; color: var(--muted); text-transform: uppercase; }
+.handlabel b { color: var(--ink); font-size: 14px; margin-left: 4px; }
+.hand { display: flex; gap: 6px; flex-wrap: wrap; }
+.handball {
+  width: 16px; height: 16px; border-radius: 50%;
+  background: var(--c); opacity: 0.55; cursor: help;
+}
+.handball.next { opacity: 1; box-shadow: 0 0 0 2px #0b0f16, 0 0 0 3px var(--c), 0 0 14px var(--c); }
+
+button {
+  font-family: var(--mono);
+  background: var(--panel-2);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 12px;
+  letter-spacing: 1px;
+  cursor: pointer;
+  transition: transform 0.08s ease, background 0.15s ease, border-color 0.15s ease;
+}
+button:hover:not(:disabled) { background: #1f2a3a; border-color: #3a4a60; transform: translateY(-1px); }
+button:disabled { opacity: 0.4; cursor: not-allowed; }
+button.big {
+  background: linear-gradient(90deg, var(--cool), var(--rare));
+  color: #0b0f16; font-weight: 700; border: none;
+}
+.cashout {
+  margin-left: auto;
+  background: linear-gradient(90deg, var(--good), var(--gold));
+  color: #0b0f16; font-weight: 700; border: none;
+  animation: pulse 1.4s infinite;
+}
+@keyframes pulse { 50% { box-shadow: 0 0 18px rgba(126, 231, 135, 0.55); } }
+.hidden { display: none !important; }
+
+/* --------------------------------------------------------------------- log */
+.log { list-style: none; margin: 0; padding: 0; font-size: 11px; }
+.log li {
+  display: flex; align-items: baseline; gap: 6px;
+  padding: 4px 0; border-bottom: 1px dashed #1d2836;
+}
+.log li span { color: var(--muted); flex: 1; }
+.log li b { color: var(--cool); font-weight: 400; }
+.log li em { font-style: normal; color: var(--gold); font-weight: 700; }
+
+.legend { list-style: none; margin: 0; padding: 0; font-size: 11px; }
+.legend li { display: flex; align-items: center; gap: 7px; padding: 3px 0; }
+.legend li i { width: 10px; height: 10px; border-radius: 50%; }
+.legend li em { margin-left: auto; font-style: normal; color: var(--muted); font-size: 10px; }
+
+/* ---------------------------------------------------------------- overlays */
+.overlay {
+  position: fixed; inset: 0;
+  background: rgba(5, 8, 13, 0.82);
+  backdrop-filter: blur(6px);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 50;
+  padding: 20px;
+  overflow-y: auto;
+}
+.card {
+  background: linear-gradient(180deg, var(--panel) 0%, #0d121a 100%);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 28px;
+  max-width: 760px;
+  width: 100%;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6);
+  animation: rise 0.25s ease;
+}
+@keyframes rise { from { transform: translateY(14px); opacity: 0; } }
+
+.menu { max-width: 520px; text-align: center; }
+.menu h1 {
+  margin: 0; font-size: 46px; letter-spacing: 10px;
+  background: linear-gradient(90deg, var(--gold), var(--hot) 55%, var(--rare));
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.tag { color: var(--muted); letter-spacing: 3px; text-transform: uppercase; font-size: 10px; margin: 4px 0 18px; }
+.blurb { font-size: 12.5px; line-height: 1.8; color: #b9c6d6; margin: 0 0 20px; }
+.seedrow { display: flex; align-items: center; gap: 10px; justify-content: center; margin-bottom: 16px; }
+.seedrow label { font-size: 10px; letter-spacing: 2px; color: var(--muted); text-transform: uppercase; }
+.seedrow input {
+  background: #0a0e15; border: 1px solid var(--line); border-radius: 8px;
+  color: var(--cool); font-family: var(--mono); font-size: 13px;
+  padding: 8px 12px; width: 190px; text-align: center; letter-spacing: 2px;
+}
+.seedrow input:focus { outline: none; border-color: var(--cool); }
+.menu .big { width: 100%; padding: 14px; font-size: 15px; letter-spacing: 3px; }
+
+.records { display: flex; gap: 10px; justify-content: center; margin: 20px 0 10px; flex-wrap: wrap; }
+.records div {
+  background: var(--panel-2); border: 1px solid var(--line); border-radius: 9px;
+  padding: 9px 14px; min-width: 88px;
+}
+.records b { display: block; font-size: 20px; color: var(--gold); }
+.records span { font-size: 9px; letter-spacing: 1.2px; color: var(--muted); text-transform: uppercase; }
+
+/* -------------------------------------------------------------------- shop */
+.shophead { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 18px; }
+.shophead h2 { margin: 0; letter-spacing: 6px; font-size: 20px; }
+.purse b { color: var(--gold); font-size: 19px; }
+
+.offers { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.offer {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-top: 3px solid var(--c);
+  border-radius: 11px;
+  padding: 14px;
+  display: flex; flex-direction: column; align-items: center; text-align: center;
+  transition: transform 0.12s ease, border-color 0.12s ease;
+}
+.offer:hover { transform: translateY(-3px); border-color: var(--c); }
+.offer.sold { opacity: 0.42; }
+.offer .kind { font-size: 8.5px; letter-spacing: 2px; color: var(--muted); margin-bottom: 10px; }
+.offer h3 { margin: 10px 0 6px; font-size: 13.5px; color: var(--c); letter-spacing: 0.5px; }
+.offer p { font-size: 11px; line-height: 1.65; color: #a9b8ca; margin: 0 0 14px; flex: 1; }
+.ball-art { width: 34px; height: 34px; border-radius: 50%; display: block; box-shadow: 0 0 22px currentColor; }
+.relic-art {
+  width: 38px; height: 38px; border-radius: 9px; display: grid; place-items: center;
+  border: 1px solid var(--c); color: var(--c); font-size: 13px; font-weight: 700;
+}
+.offer .buy {
+  width: 100%;
+  background: var(--c); color: #0b0f16; border: none; font-weight: 700;
+}
+.offer .buy.poor { background: #23303f; color: var(--muted); }
+
+.shopfoot { display: flex; gap: 10px; justify-content: center; margin-top: 20px; }
+.shopbag { margin-top: 14px; text-align: center; font-size: 10.5px; color: var(--muted); }
+
+.over { max-width: 560px; text-align: center; }
+.over h2 { margin: 0; font-size: 32px; letter-spacing: 8px; color: var(--hot); }
+
+/* ------------------------------------------------------------- toast & tip */
+.toast {
+  position: absolute; top: 16px; left: 50%; transform: translate(-50%, -12px);
+  background: rgba(10, 14, 21, 0.92);
+  border: 1px solid var(--cool);
+  color: var(--cool);
+  border-radius: 999px;
+  padding: 7px 20px;
+  font-size: 11.5px; letter-spacing: 2.5px;
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  white-space: nowrap;
+}
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+.toast.danger { border-color: var(--hot); color: var(--hot); }
+
+.tooltip {
+  position: fixed; z-index: 100;
+  background: #0a0e15; border: 1px solid var(--line); border-radius: 8px;
+  padding: 9px 12px; font-size: 11px; line-height: 1.6; max-width: 240px;
+  color: #c8d4e2; pointer-events: none;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+}
+.tooltip b { color: var(--ink); }
+
+@media (max-width: 1180px) {
+  #app { grid-template-columns: 230px minmax(0, 1fr); }
+  .panel.right { display: none; }
+}
+@media (max-width: 900px) {
+  #app { grid-template-columns: minmax(0, 1fr); }
+  .panel.left { display: none; }
+  .offers { grid-template-columns: 1fr; }
+}
+
+/* ==========================================================================
+   Arcade alignment
+   --------------------------------------------------------------------------
+   PEGFALL keeps its own palette, layout and type; these few rules pull its
+   shape and press-feel onto the shared scale in shared/css/arcade.css, so a
+   player moving between arcade games meets the same corners, the same panel
+   lift and the same button response. Appended rather than woven in, so it is
+   obvious what belongs to the design system and what belongs to the game.
+   ========================================================================== */
+
+.panel,
+.modifier,
+.handbar { border-radius: var(--ac-r-md); box-shadow: var(--ac-lift-2); }
+
+.stat,
+.relic,
+.offer,
+.records div,
+.seedrow input,
+.tooltip { border-radius: var(--ac-r-sm); }
+
+.card { border-radius: var(--ac-r-lg); box-shadow: var(--ac-lift-3); }
+
+canvas#board { border-radius: var(--ac-r-md); }
+
+button {
+  border-radius: var(--ac-r-md);
+  box-shadow: var(--ac-lift-1);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+button:hover:not(:disabled) { transform: none; filter: brightness(1.18); }
+button:active:not(:disabled) { transform: translateY(2px); box-shadow: none; }
+button:focus-visible { outline: 2px solid var(--ac-gold); outline-offset: 2px; }
+
+/* Shared caps treatment: one tracking value for every small uppercase label. */
+.brand p,
+.stat span,
+.block h2,
+.handlabel,
+.tag,
+.records span,
+.offer .kind { letter-spacing: var(--ac-track-caps); }
+
+/* Keep the fixed arcade bar from sitting on top of anything. Wide layouts put
+   it over the right-hand panel; narrow ones fold that panel away and put it
+   over the floor-modifier strip instead. The clearance is measured from the
+   bar itself, so a long player name cannot grow into the game. */
+.panel.right { padding-top: calc(var(--ac-bar-h) + var(--ac-s3)); }
+@media (max-width: 1180px) {
+  .modifier { padding-right: calc(var(--ac-bar-w) + var(--ac-s3)); }
+}

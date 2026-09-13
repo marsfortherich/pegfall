@@ -1,0 +1,45 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# never let two deploys race; always finish the newest
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # The whole game is static: no build, no dependencies. The CNAME file at
+      # the repo root is what binds this site to pegfall.marsindustries.dev,
+      # and .nojekyll stops Pages from running the folder through Jekyll.
+      - name: Check the published root is intact
+        run: |
+          test -f index.html || { echo "::error::index.html is missing"; exit 1; }
+          test -f CNAME || { echo "::error::CNAME is missing — the custom domain would be dropped"; exit 1; }
+          test -f shared/js/arcade.js || {
+            echo "::error::shared/ is missing — run tools/sync-shared.py in the arcade and commit"; exit 1; }
+
+      # NOTE: Pages must already be switched on for this repo, under
+      # Settings -> Pages -> Source: GitHub Actions.
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.'
+      - id: deployment
+        uses: actions/deploy-pages@v4

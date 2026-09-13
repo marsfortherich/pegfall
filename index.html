@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en" data-arcade-game="pegfall">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PEGFALL — a plinko roguelite</title>
+<link rel="stylesheet" href="shared/css/arcade.css">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="app">
+
+  <aside class="panel left">
+    <header class="brand">
+      <h1>PEGFALL</h1>
+      <p>a plinko roguelite</p>
+    </header>
+
+    <section class="stats">
+      <div class="stat"><span>Floor</span><b id="run-floor">1</b></div>
+      <div class="stat"><span>Gold</span><b id="run-gold" class="gold">0</b></div>
+      <div class="stat wide"><span>Seed</span><b id="run-seed" class="seed">—</b></div>
+    </section>
+
+    <section class="block">
+      <h2>Relics</h2>
+      <div id="relic-list" class="relics"></div>
+    </section>
+
+    <section class="block">
+      <h2>Bag</h2>
+      <div id="bag-list" class="bag"></div>
+    </section>
+  </aside>
+
+  <main class="stage">
+    <div id="modifier" class="modifier empty"></div>
+
+    <div class="scorebar">
+      <div class="scorenums">
+        <span class="score" id="run-score">0</span>
+        <span class="sep">/</span>
+        <span class="target" id="run-target">0</span>
+        <span class="pct" id="score-pct">0%</span>
+      </div>
+      <div class="track"><div id="score-fill" class="fill"></div></div>
+    </div>
+
+    <div class="boardwrap">
+      <canvas id="board" width="620" height="706"></canvas>
+      <div id="toast" class="toast"></div>
+    </div>
+
+    <div class="handbar">
+      <div class="handlabel">Hand <b id="hand-count">0</b></div>
+      <div id="hand-list" class="hand"></div>
+      <button id="cashout" class="cashout hidden">BANK IT ✓</button>
+    </div>
+  </main>
+
+  <aside class="panel right">
+    <section class="block">
+      <h2>Last drops</h2>
+      <ul id="log-list" class="log"></ul>
+    </section>
+
+    <section class="block">
+      <h2>Pegs</h2>
+      <ul class="legend">
+        <li><i style="background:#6e7c91"></i>Plain <em>+1 value</em></li>
+        <li><i style="background:#f2cc60"></i>Gold <em>+12 value</em></li>
+        <li><i style="background:#79c0ff"></i>Charged <em>+0.35 slot ×</em></li>
+        <li><i style="background:#ff7b72"></i>Bumper <em>+15, big kick</em></li>
+        <li><i style="background:#7ee787"></i>Brittle <em>breaks for +14</em></li>
+      </ul>
+    </section>
+
+    <section class="block">
+      <h2>How it works</h2>
+      <p class="muted small">
+        A ball's <b>value</b> grows as it hits pegs. The slot it lands in <b>multiplies</b> that value
+        into score. Beat the floor target or the run ends.
+      </p>
+      <p class="muted small">
+        <b>Click</b> the board to drop · <b>Space</b> re-drops at the same spot ·
+        <b>←/→</b> nudge the aim · <b>Enter</b> banks a cleared floor.
+      </p>
+      <div id="records"></div>
+    </section>
+  </aside>
+
+</div>
+
+<div id="overlay" class="overlay hidden"></div>
+<div id="tooltip" class="tooltip hidden"></div>
+
+<!-- shared arcade platform: design system, account, leaderboards -->
+<script src="shared/js/arcade-config.js"></script>
+<script src="shared/js/arcade-auth.js"></script>
+<script src="shared/js/arcade-scores.js"></script>
+<script src="shared/js/arcade-ui.js"></script>
+<script src="shared/js/arcade.js"></script>
+
+<script src="js/rng.js"></script>
+<script src="js/content.js"></script>
+<script src="js/board.js"></script>
+<script src="js/physics.js"></script>
+<script src="js/save.js"></script>
+<script src="js/game.js"></script>
+<script src="js/render.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>

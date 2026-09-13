@@ -1,0 +1,18 @@
+# editor / tooling
+.claude/
+.vscode/
+.idea/
+*.swp
+
+# OS noise
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# node, if it ever appears
+node_modules/
+npm-debug.log*
+
+# local scratch
+*.local
+scratch/
