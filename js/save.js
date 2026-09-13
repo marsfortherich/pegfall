@@ -30,6 +30,14 @@
   function unlockedBalls(meta) {
     var base = ['standard', 'heavy', 'bouncy', 'lucky', 'splitter'];
     UNLOCKS.forEach(function (u) { if (meta.bestFloor >= u.floor) base.push(u.ball); });
+    // Arcade progression is a second, parallel route to the same balls: buy
+    // one with Shards instead of waiting to reach its floor. Either unlocks
+    // it, and owning both changes nothing.
+    if (window.Arcade && window.Arcade.progress) {
+      window.Arcade.progress.granted('pegfall', 'ball').forEach(function (id) {
+        if (base.indexOf(id) === -1) base.push(id);
+      });
+    }
     return base;
   }
 

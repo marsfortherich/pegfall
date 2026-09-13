@@ -534,6 +534,188 @@
     });
   }
 
+  /* --------------------------------------------------------- progression */
+
+  /** An earned achievement deserves more than an ordinary toast. */
+  function achievementToast(def) {
+    var t = el('div', 'ac-toast ac-toast--achv');
+    t.appendChild(el('div', 'ac-achv__mark', '★'));
+    var body = el('div');
+    body.appendChild(el('div', 'ac-achv__kicker', 'Achievement unlocked'));
+    body.appendChild(el('div', 'ac-achv__name', def.label));
+    t.appendChild(body);
+    toastHost().appendChild(t);
+    global.setTimeout(function () {
+      t.classList.add('is-out');
+      global.setTimeout(function () { if (t.parentNode) t.parentNode.removeChild(t); }, 260);
+    }, 5200);
+  }
+
+  /**
+   * The progression menu: what you have earned, what it buys, and what is left
+   * to achieve. Deliberately apart from any run — nothing in here is reachable
+   * mid-game, and nothing mid-game needs it.
+   */
+  function showProgress(gameId) {
+    var id = gameId || currentGameId || (Arcade.games[0] && Arcade.games[0].id);
+    var tab = 'unlocks';
+
+    modal({
+      wide: true,
+      title: 'Progression',
+      sub: 'Everything you keep between runs.',
+      body: function (body) {
+        var gameTabs = el('div', 'ac-tabs');
+        Arcade.games.forEach(function (g) {
+          var t = el('button', 'ac-tab', g.name);
+          t.type = 'button';
+          t.setAttribute('aria-selected', g.id === id ? 'true' : 'false');
+          t.addEventListener('click', function () {
+            if (g.id === id) return;
+            id = g.id;
+            Array.prototype.forEach.call(gameTabs.children, function (c) {
+              c.setAttribute('aria-selected', c === t ? 'true' : 'false');
+            });
+            draw();
+          });
+          gameTabs.appendChild(t);
+        });
+        body.appendChild(gameTabs);
+
+        var sectionTabs = el('div', 'ac-metrics');
+        var SECTIONS = [['unlocks', 'Unlocks'], ['achievements', 'Achievements'], ['clears', 'Difficulty']];
+        SECTIONS.forEach(function (pair) {
+          var t = el('button', 'ac-metric', pair[1]);
+          t.type = 'button';
+          t.setAttribute('aria-selected', pair[0] === tab ? 'true' : 'false');
+          t.addEventListener('click', function () {
+            if (pair[0] === tab) return;
+            tab = pair[0];
+            Array.prototype.forEach.call(sectionTabs.children, function (c) {
+              c.setAttribute('aria-selected', c === t ? 'true' : 'false');
+            });
+            draw();
+          });
+          sectionTabs.appendChild(t);
+        });
+        body.appendChild(sectionTabs);
+
+        var host = el('div');
+        body.appendChild(host);
+
+        function draw() {
+          host.innerHTML = '';
+          if (tab === 'unlocks') drawUnlocks(host, id, draw);
+          else if (tab === 'achievements') drawAchievements(host, id);
+          else drawClears(host, id);
+        }
+        draw();
+      },
+      foot: function (foot, api) { foot.appendChild(btn('Close', '', api.close)); }
+    });
+  }
+
+  function drawUnlocks(host, gameId, redraw) {
+    var prog = Arcade.progressionOf(gameId);
+    if (!prog) { host.appendChild(emptyNote('This game has no progression yet.')); return; }
+
+    var bal = Arcade.progress.balance(gameId);
+    var purse = el('div', 'ac-purse');
+    purse.appendChild(el('span', 'ac-purse__icon', prog.currency.icon));
+    purse.appendChild(el('b', 'ac-purse__amount', fmt(bal)));
+    purse.appendChild(el('span', 'ac-purse__label', prog.currency.label + ' — earned by playing'));
+    host.appendChild(purse);
+
+    var list = el('div', 'ac-unlocks');
+    prog.unlocks.forEach(function (u) {
+      var owned = Arcade.progress.isUnlocked(gameId, u.id);
+      var afford = bal >= u.cost;
+      var row = el('div', 'ac-unlock' + (owned ? ' is-owned' : ''));
+
+      var text = el('div', 'ac-unlock__text');
+      text.appendChild(el('div', 'ac-unlock__name', u.label));
+      text.appendChild(el('div', 'ac-unlock__desc', u.desc));
+      row.appendChild(text);
+
+      if (owned) {
+        row.appendChild(el('span', 'ac-unlock__owned', 'Unlocked'));
+      } else {
+        var b = btn(prog.currency.icon + ' ' + u.cost,
+          'ac-btn--sm' + (afford ? ' ac-btn--gold' : ''), function () {
+            var res = Arcade.progress.buy(gameId, u.id);
+            if (res.ok) { toast('Unlocked ' + u.label, 'gold'); redraw(); }
+            else { toast(res.reason, 'bad'); }
+          });
+        b.disabled = !afford;
+        row.appendChild(b);
+      }
+      list.appendChild(row);
+    });
+    host.appendChild(list);
+
+    var note = el('div', 'ac-note');
+    note.style.marginTop = 'var(--ac-s4)';
+    note.textContent = 'Unlocks apply to every new run and are never lost.';
+    host.appendChild(note);
+  }
+
+  function drawAchievements(host, gameId) {
+    var p = Arcade.progress.achievementProgress();
+
+    var head = el('div', 'ac-purse');
+    head.appendChild(el('b', 'ac-purse__amount', p.earned + ' / ' + p.total));
+    head.appendChild(el('span', 'ac-purse__label', 'earned across the arcade'));
+    host.appendChild(head);
+
+    var bar = el('div', 'ac-achvbar');
+    var fill = el('div', 'ac-achvbar__fill');
+    fill.style.width = p.pct + '%';
+    bar.appendChild(fill);
+    host.appendChild(bar);
+
+    [{ id: gameId, label: Arcade.gameById(gameId).name },
+     { id: null, label: 'Arcade-wide' }].forEach(function (grp) {
+      var items = Arcade.progress.achievementsFor(grp.id);
+      if (!items.length) return;
+      host.appendChild(el('div', 'ac-cap ac-achv__group', grp.label));
+      var list = el('div', 'ac-unlocks');
+      items.forEach(function (a) {
+        var got = Arcade.progress.hasAchievement(a.id);
+        var row = el('div', 'ac-unlock ac-achv' + (got ? ' is-owned' : ''));
+        row.appendChild(el('span', 'ac-achv__mark' + (got ? '' : ' is-locked'), got ? '★' : '☆'));
+        var text = el('div', 'ac-unlock__text');
+        text.appendChild(el('div', 'ac-unlock__name', a.label));
+        text.appendChild(el('div', 'ac-unlock__desc',
+          (a.secret && !got) ? 'Hidden — keep playing.' : a.desc));
+        row.appendChild(text);
+        list.appendChild(row);
+      });
+      host.appendChild(list);
+    });
+  }
+
+  function drawClears(host, gameId) {
+    var rows = Arcade.progress.clearsFor(gameId);
+    var game = Arcade.gameById(gameId);
+    if (rows.length < 2) {
+      host.appendChild(emptyNote(game.name + ' runs at a single difficulty for now, ' +
+        'so there is nothing to clear separately yet.'));
+      return;
+    }
+    host.appendChild(el('div', 'ac-cap', 'Cleared at'));
+    var list = el('div', 'ac-unlocks');
+    rows.forEach(function (r) {
+      var row = el('div', 'ac-unlock' + (r.cleared ? ' is-owned' : ''));
+      var text = el('div', 'ac-unlock__text');
+      text.appendChild(el('div', 'ac-unlock__name', r.label));
+      row.appendChild(text);
+      row.appendChild(el('span', r.cleared ? 'ac-unlock__owned' : 'ac-note',
+        r.cleared ? 'Cleared' : 'Not yet'));
+      list.appendChild(row);
+    });
+    host.appendChild(list);
+  }
+
   /* ------------------------------------------------------------ arcade bar */
 
   function gameHref(g) {
@@ -612,6 +794,12 @@
     brand.appendChild(caret);
 
     bar.appendChild(brand);
+
+    var prog = el('button', 'ac-bar__btn', 'Progress');
+    prog.type = 'button';
+    prog.title = 'Unlocks, achievements and difficulty clears';
+    prog.addEventListener('click', function () { showProgress(currentGameId); });
+    bar.appendChild(prog);
 
     var lb = el('button', 'ac-bar__btn', 'Leaderboard');
     lb.type = 'button';
@@ -711,6 +899,9 @@
     row.appendChild(btn(opts.leaderboardLabel || 'Leaderboard', 'ac-btn--sm', function () {
       showLeaderboard(opts.gameId || currentGameId);
     }));
+    row.appendChild(btn('Progress', 'ac-btn--sm', function () {
+      showProgress(opts.gameId || currentGameId);
+    }));
     var accountBtn = btn('', 'ac-btn--sm', function () {
       if (!Arcade.isConfigured()) showOffline();
       else if (Arcade.auth.isSignedIn()) showAccount();
@@ -737,6 +928,8 @@
 
   Arcade.ui = {
     mountBar: mountBar,
+    showProgress: showProgress,
+    achievementToast: achievementToast,
     refreshBar: refreshBar,
     showAuth: showAuth,
     showAccount: showAccount,

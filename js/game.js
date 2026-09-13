@@ -215,7 +215,8 @@
     G.rng = new PK.Rng(G.seed);
     G.floor = 0;
     G.score = 0;
-    G.gold = 6;
+    G.gold = 6 + (window.Arcade && window.Arcade.progress
+      ? window.Arcade.progress.bonus('pegfall', 'gold') : 0);
     G.bag = ['standard', 'standard', 'standard', 'standard', 'standard', 'standard', 'bouncy', 'heavy'];
     G.relics = [];
     G.handSizeBase = BASE_HAND;
@@ -448,6 +449,13 @@
     // Post the run to the arcade. Fire-and-forget: the game over screen never
     // waits on the network, and an offline arcade is a no-op.
     if (window.Arcade) {
+      window.Arcade.progress.recordRun('pegfall', {
+        score: G.stats.runTotal,
+        floor: G.floor,
+        bestBall: G.stats.bestBall,
+        relics: G.relics.length,
+        difficulty: 'standard'
+      });
       window.Arcade.submitScore('pegfall', {
         score: G.stats.runTotal,
         metrics: { floor: G.floor, bestBall: G.stats.bestBall },

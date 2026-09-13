@@ -723,3 +723,75 @@ html[data-arcade-game="hub"] {
   .ac-modal__box, .ac-toast { animation: none; }
   .ac-btn { transition: none; }
 }
+
+/* ============================================================================
+   Progression
+   ========================================================================= */
+
+.ac-purse {
+  display: flex;
+  align-items: baseline;
+  gap: var(--ac-s2);
+  padding-bottom: var(--ac-s3);
+}
+.ac-purse__icon { font-size: var(--ac-fs-lg); color: var(--ac-gold); }
+.ac-purse__amount { font-family: var(--ac-font-num); font-size: var(--ac-fs-xl); color: var(--ac-gold); }
+.ac-purse__label { font-size: var(--ac-fs-tiny); color: var(--ac-ink-dim); }
+
+.ac-unlocks { display: flex; flex-direction: column; gap: var(--ac-s2); }
+.ac-unlock {
+  display: flex;
+  align-items: center;
+  gap: var(--ac-s3);
+  padding: var(--ac-s3);
+  background: var(--ac-surface-2);
+  border: 1px solid transparent;
+  border-radius: var(--ac-r-sm);
+}
+/* Owned reads as settled rather than loud: the interesting rows are the ones
+   you have not bought yet. */
+.ac-unlock.is-owned { border-color: var(--ac-good); background: rgba(63, 169, 107, .10); }
+.ac-unlock__text { flex: 1; min-width: 0; }
+.ac-unlock__name { font-size: var(--ac-fs-sm); font-weight: 700; }
+.ac-unlock__desc { font-size: var(--ac-fs-tiny); color: var(--ac-ink-dim); line-height: 1.5; margin-top: 2px; }
+.ac-unlock__owned {
+  font-size: var(--ac-fs-micro);
+  letter-spacing: var(--ac-track-caps);
+  text-transform: uppercase;
+  color: var(--ac-good);
+  flex: none;
+}
+
+.ac-achv__group { margin: var(--ac-s5) 0 var(--ac-s2); }
+.ac-achv__mark { font-size: var(--ac-fs-lg); color: var(--ac-gold); flex: none; width: 22px; text-align: center; }
+.ac-achv__mark.is-locked { color: var(--ac-line); }
+
+.ac-achvbar {
+  height: 6px;
+  background: var(--ac-surface-0);
+  border-radius: var(--ac-r-pill);
+  overflow: hidden;
+  margin-bottom: var(--ac-s4);
+}
+.ac-achvbar__fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--ac-gold-deep), var(--ac-gold));
+  transition: width var(--ac-slow);
+}
+
+/* The achievement toast is the one moment worth interrupting for. */
+.ac-toast--achv {
+  display: flex;
+  align-items: center;
+  gap: var(--ac-s3);
+  border-left-color: var(--ac-gold);
+  background: linear-gradient(90deg, rgba(217, 180, 91, .16), var(--ac-surface-1) 70%);
+  padding: var(--ac-s3) var(--ac-s4);
+}
+.ac-achv__kicker {
+  font-size: var(--ac-fs-micro);
+  letter-spacing: var(--ac-track-caps);
+  text-transform: uppercase;
+  color: var(--ac-gold);
+}
+.ac-achv__name { font-size: var(--ac-fs-md); font-weight: 800; margin-top: 1px; }
