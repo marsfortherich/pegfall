@@ -127,7 +127,11 @@
     g.gain.exponentialRampToValueAtTime(Math.max(0.0002, vol(o.gain === undefined ? 0.2 : o.gain)), t0 + 0.008);
     g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
     src.connect(f).connect(g).connect(master);
-    src.start(t0, Math.random() * (noiseBuf.duration - dur - 0.05));
+    // Never read from before the start of the buffer: a request longer than
+    // the buffer makes this negative, and Web Audio throws a RangeError that
+    // would escape into the game loop. The source loops, so a long burst wraps.
+    var maxOffset = Math.max(0, noiseBuf.duration - dur - 0.05);
+    src.start(t0, Math.random() * maxOffset);
     src.stop(t0 + dur + 0.02);
     track(src, g, delay + dur);
   }
