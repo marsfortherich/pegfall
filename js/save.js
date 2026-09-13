@@ -40,5 +40,48 @@
     return null;
   }
 
-  PK.Save = { load: load, save: save, unlockedBalls: unlockedBalls, nextUnlock: nextUnlock, UNLOCKS: UNLOCKS };
+  /* ---------------------------------------------------------------- run
+
+     The in-progress run, so closing the tab does not cost a floor. Kept in its
+     own key: a corrupt or outdated run must never take the meta progression
+     down with it.
+
+     Balls in flight are deliberately not saved. Every save point is a moment
+     when the board is still — after a ball lands, entering the shop, starting
+     a floor — so there is never a half-fallen ball to reconstruct. */
+
+  var RUN_KEY = 'pegfall.run.v1';
+  var RUN_VERSION = 1;
+
+  function saveRun(snapshot) {
+    try {
+      snapshot.v = RUN_VERSION;
+      localStorage.setItem(RUN_KEY, JSON.stringify(snapshot));
+    } catch (e) { /* file:// or private mode: the run just will not resume */ }
+  }
+
+  function loadRun() {
+    try {
+      var raw = localStorage.getItem(RUN_KEY);
+      if (!raw) return null;
+      var data = JSON.parse(raw);
+      // A save from an older build describes a board this build may no longer
+      // understand, so it is dropped rather than half-restored.
+      if (!data || data.v !== RUN_VERSION) return null;
+      return data;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function clearRun() {
+    try { localStorage.removeItem(RUN_KEY); } catch (e) { /* nothing to do */ }
+  }
+
+  function hasRun() { return !!loadRun(); }
+
+  PK.Save = {
+    load: load, save: save, unlockedBalls: unlockedBalls, nextUnlock: nextUnlock, UNLOCKS: UNLOCKS,
+    saveRun: saveRun, loadRun: loadRun, clearRun: clearRun, hasRun: hasRun
+  };
 })(window.PK = window.PK || {});

@@ -144,6 +144,7 @@
     var meta = PK.Save.load();
     var next = PK.Save.nextUnlock(meta);
     var unlocked = PK.Save.unlockedBalls(meta);
+    var saved = PK.Save.loadRun();
     showOverlay(
       '<div class="card menu">' +
       '<h1>PEGFALL</h1>' +
@@ -153,7 +154,10 @@
       'fighting back.</p>' +
       '<div class="seedrow"><label>Seed</label><input id="seed-input" maxlength="16" placeholder="' +
       esc(PK.randomSeedWord()) + '"></div>' +
-      '<button class="big" id="btn-start">START RUN</button>' +
+      (saved
+        ? '<button class="big" id="btn-continue">CONTINUE · FLOOR ' + saved.floor + '</button>' +
+          '<button id="btn-start" class="newrun">NEW RUN</button>'
+        : '<button class="big" id="btn-start">START RUN</button>') +
       '<div class="records">' +
       '<div><b>' + meta.bestFloor + '</b><span>best floor</span></div>' +
       '<div><b>' + meta.runs + '</b><span>runs</span></div>' +
@@ -171,8 +175,18 @@
 
     wireSound();
 
+    if (saved) {
+      $('btn-continue').addEventListener('click', function () {
+        PK.Sfx.ui();
+        hideOverlay();
+        if (!PK.Game.resumeRun()) showMenu();   // a save that will not load
+      });
+    }
     $('btn-start').addEventListener('click', function () {
       var v = $('seed-input').value.trim();
+      if (saved && !window.confirm('Start a new run? The saved run on floor ' +
+          saved.floor + ' will be discarded.')) return;
+      PK.Sfx.ui();
       hideOverlay();
       PK.Game.newRun(v || null);
     });

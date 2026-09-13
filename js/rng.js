@@ -2,14 +2,6 @@
 (function (PK) {
   'use strict';
 
-  function mulberry32(a) {
-    return function () {
-      a |= 0; a = (a + 0x6D2B79F5) | 0;
-      var t = Math.imul(a ^ (a >>> 15), 1 | a);
-      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-    };
-  }
 
   function hashString(str) {
     var h = 2166136261 >>> 0;
@@ -22,8 +14,27 @@
 
   function Rng(seed) {
     this.seed = (typeof seed === 'string') ? hashString(seed) : (seed >>> 0);
-    this.next = mulberry32(this.seed);
+    this.state = this.seed;
   }
+
+  /* mulberry32, with the counter on the instance rather than hidden in a
+     closure. Same arithmetic and so the same sequence for any given seed —
+     but the state can now be saved and restored, which is what lets a run be
+     resumed mid-floor instead of only at a floor boundary. */
+  Rng.prototype.next = function () {
+    var a = (this.state + 0x6D2B79F5) | 0;
+    this.state = a;
+    var t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+
+  /** Restore a saved generator exactly where it left off. */
+  Rng.restore = function (seed, state) {
+    var r = new Rng(seed);
+    if (typeof state === 'number' && isFinite(state)) r.state = state | 0;
+    return r;
+  };
   Rng.prototype.float = function (min, max) {
     if (min === undefined) return this.next();
     if (max === undefined) { max = min; min = 0; }

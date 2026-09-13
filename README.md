@@ -36,6 +36,9 @@ Clear the target and you reach the shop. Miss it and the run is over.
 - **Boss floors** every 5th floor — THE INVERSION flips the payout curve, THE GAUNTLET gives you three
   balls and triple pegs, THE CAGE fills the board with bumpers and voids every third slot.
 - **Seeded runs.** Every run has a seed; type one on the menu to replay it exactly.
+- **Resumable.** A run is saved whenever the board is still — after a ball lands, entering
+  the shop, starting a floor — so closing the tab costs nothing. The menu offers
+  **Continue** until the run ends.
 - **Meta progression** in localStorage: reaching floors 3/5/7/9 unlocks the Bomb, Ghost, Magnet and
   Void balls for future runs.
 
@@ -64,7 +67,7 @@ with how far past the target you finish.
 | `js/game.js` | run state machine, scoring, shop, relic hook dispatch |
 | `js/render.js` | canvas drawing, trails, particles, popups |
 | `js/ui.js` | DOM HUD, shop, overlays, tooltips |
-| `js/save.js` | localStorage meta progression |
+| `js/save.js` | localStorage meta progression, and the resumable run |
 | `js/settings.js` | sound and volume preferences, kept apart from run state |
 | `js/audio.js` | every sound, synthesised at runtime — no audio files |
 | `js/main.js` | canvas sizing, input, fixed-timestep loop |

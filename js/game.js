@@ -101,6 +101,112 @@
     }
   };
 
+  /* -------------------------------------------------------- run persistence */
+
+  function modifierById(id) {
+    var all = PK.MODIFIERS.concat(PK.BOSS_MODIFIERS);
+    for (var i = 0; i < all.length; i++) if (all[i].id === id) return all[i];
+    return null;
+  }
+
+  /**
+   * Freeze the run. Only called when the board is still, so no ball is ever
+   * mid-flight in a snapshot.
+   *
+   * The board goes in whole rather than being regenerated from the seed: by
+   * the time you are halfway through a floor the generator has moved on, and
+   * replaying it would either rewind your score or desync the pegs.
+   */
+  function snapshot() {
+    if (!G.rng || G.screen === 'gameover' || !G.board) return null;
+    return {
+      seed: G.seed,
+      rngState: G.rng.state,
+      floor: G.floor,
+      score: G.score,
+      target: G.target,
+      gold: G.gold,
+      bag: G.bag.slice(),
+      relics: G.relics.slice(),
+      hand: G.hand.slice(),
+      handSizeBase: G.handSizeBase,
+      carryScore: G.carryScore,
+      carryValue: G.carryValue,
+      dropIndex: G.dropIndex,
+      screen: G.screen,
+      floorResolved: G.floorResolved,
+      modifier: G.modifier ? G.modifier.id : null,
+      board: G.board,
+      stats: G.stats,
+      log: G.log,
+      shop: G.shop ? {
+        rerollCost: G.shop.rerollCost,
+        gained: G.shop.gained,
+        offers: G.shop.offers.map(function (o) {
+          return { kind: o.kind, id: o.id, cost: o.cost, sold: !!o.sold };
+        })
+      } : null
+    };
+  }
+
+  /** Persist the run. Cheap enough to call at every still moment. */
+  function persist() {
+    var snap = snapshot();
+    if (snap) PK.Save.saveRun(snap);
+  }
+
+  function hasSave() { return PK.Save.hasRun(); }
+
+  /** Rebuild a run from disk. Returns false if there is nothing usable. */
+  function resumeRun() {
+    var d = PK.Save.loadRun();
+    if (!d) return false;
+
+    G.meta = G.meta || PK.Save.load();
+    G.seed = d.seed;
+    G.rng = PK.Rng.restore(PK.hashString(d.seed), d.rngState);
+    G.floor = d.floor;
+    G.score = d.score;
+    G.target = d.target;
+    G.gold = d.gold;
+    G.bag = d.bag;
+    G.relics = d.relics;
+    G.hand = d.hand;
+    G.handSizeBase = d.handSizeBase;
+    G.carryScore = d.carryScore || 0;
+    G.carryValue = d.carryValue || 0;
+    G.dropIndex = d.dropIndex || 0;
+    G.screen = d.screen;
+    G.floorResolved = !!d.floorResolved;
+    G.modifier = d.modifier ? modifierById(d.modifier) : null;
+    G.board = d.board;
+    G.stats = d.stats;
+    G.log = d.log || [];
+    G.balls = []; G.popups = []; G.particles = [];
+    G.aiming = true;
+    G.shake = 0;
+
+    // Offers persist as ids; their display data is looked up again here so a
+    // content change never ships a stale description inside a save file.
+    if (d.shop) {
+      G.shop = {
+        rerollCost: d.shop.rerollCost,
+        gained: d.shop.gained,
+        offers: d.shop.offers.map(function (o) {
+          return { kind: o.kind, id: o.id, cost: o.cost, sold: o.sold, data: offerData(o.kind, o.id) };
+        }).filter(function (o) { return !!o.data; })
+      };
+    } else {
+      G.shop = null;
+    }
+
+    PK.Board.layoutSlots(G.board);
+    PK.UI.refresh();
+    if (G.screen === 'shop') PK.UI.showShop();
+    else PK.UI.onFloorStart();
+    return true;
+  }
+
   /* ------------------------------------------------------------------ run */
 
   function newRun(seed) {
@@ -119,6 +225,7 @@
     G.log = [];
     G.meta.runs++;
     PK.Save.save(G.meta);
+    PK.Save.clearRun();
     startFloor();
   }
 
@@ -160,6 +267,7 @@
     PK.Board.layoutSlots(board);
 
     if (board.fog) board.slots.forEach(function (s) { s.revealed = false; });
+    // persist() runs at the end of startFloor, once the hand has been drawn.
 
     // Target
     var t = BASE_TARGET * Math.pow(TARGET_GROWTH, G.floor - 1);
@@ -179,6 +287,7 @@
     G.dropIndex = 0;
     G.aiming = true;
 
+    persist();
     PK.UI.onFloorStart();
   }
 
@@ -277,6 +386,7 @@
     G.log.push({ ball: ball.def.name, value: Math.round(ball.value), mult: ctx.mult, score: score });
     if (G.log.length > 6) G.log.shift();
 
+    persist();
     PK.UI.refresh();
   }
 
@@ -333,6 +443,7 @@
     G.meta.totalScore += G.score;
     G.stats.runTotal += G.score;
     PK.Save.save(G.meta);
+    PK.Save.clearRun();
     PK.Sfx.gameOver();
 
     // Post the run to the arcade. Fire-and-forget: the game over screen never
@@ -351,6 +462,20 @@
 
   /* ----------------------------------------------------------------- shop */
 
+  /* Named so a saved shop can be rebuilt from ids alone: an offer persists as
+     kind + id + cost, and its display data is looked up again on load. */
+  var SERVICES = {
+    hand: { cost: 11, data: { name: 'Bigger Hands', rarity: 'rare', desc: 'Permanently draw +1 ball every floor.' } },
+    trim: { cost: 4, data: { name: 'Bag Trim', rarity: 'common', desc: 'Remove your lowest-value ball from the bag.' } },
+    gild: { cost: 7, data: { name: 'Gilding', rarity: 'uncommon', desc: 'Upgrade one Standard ball into a random unlocked type.' } }
+  };
+
+  function offerData(kind, id) {
+    if (kind === 'relic') return PK.RELIC_BY_ID[id];
+    if (kind === 'ball') return PK.BALLS[id];
+    return (SERVICES[id] || {}).data;
+  }
+
   function shopPool() {
     var offers = [];
     PK.RELICS.forEach(function (r) {
@@ -360,17 +485,9 @@
       var b = PK.BALLS[id];
       if (b && id !== 'standard') offers.push({ kind: 'ball', id: id, data: b, cost: b.cost });
     });
-    offers.push({
-      kind: 'service', id: 'hand', cost: 11,
-      data: { name: 'Bigger Hands', rarity: 'rare', desc: 'Permanently draw +1 ball every floor.' }
-    });
-    offers.push({
-      kind: 'service', id: 'trim', cost: 4,
-      data: { name: 'Bag Trim', rarity: 'common', desc: 'Remove your lowest-value ball from the bag.' }
-    });
-    offers.push({
-      kind: 'service', id: 'gild', cost: 7,
-      data: { name: 'Gilding', rarity: 'uncommon', desc: 'Upgrade one Standard ball into a random unlocked type.' }
+    Object.keys(SERVICES).forEach(function (id) {
+      var sv = SERVICES[id];
+      offers.push({ kind: 'service', id: id, cost: sv.cost, data: sv.data });
     });
     return offers;
   }
@@ -391,6 +508,7 @@
     G.screen = 'shop';
     G.shop = { rerollCost: 2, gained: gained, offers: [] };
     rollShop();
+    persist();
     PK.UI.showShop();
   }
 
@@ -419,15 +537,18 @@
       var pool = PK.Save.unlockedBalls(G.meta).filter(function (b) { return b !== 'standard'; });
       if (i >= 0 && pool.length) G.bag[i] = G.rng.pick(pool);
     }
+    persist();
     PK.UI.showShop();
     return true;
   }
 
   function reroll() {
-    if (G.gold < G.shop.rerollCost) return;
+    if (G.gold < G.shop.rerollCost) { PK.Sfx.deny(); return; }
     G.gold -= G.shop.rerollCost;
     G.shop.rerollCost++;
     rollShop();
+    PK.Sfx.ui();
+    persist();
     PK.UI.showShop();
   }
 
@@ -486,6 +607,9 @@
     reroll: reroll,
     leaveShop: leaveShop,
     hasRelic: hasRelic,
+    hasSave: hasSave,
+    resumeRun: resumeRun,
+    persist: persist,
     handSize: function () { return reduceHook('handSize', G.handSizeBase); },
     DROP_Y: DROP_Y
   };

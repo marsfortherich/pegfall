@@ -425,3 +425,6 @@ button:focus-visible { outline: 2px solid var(--ac-gold); outline-offset: 2px; }
 }
 .optrow button { padding: 6px 12px; font-size: 11px; }
 .optrow button.off { opacity: .5; }
+
+/* The menu grows a second action when a run is in progress. */
+.menu .newrun { width: 100%; margin-top: 8px; }
