@@ -376,3 +376,52 @@ button:focus-visible { outline: 2px solid var(--ac-gold); outline-offset: 2px; }
 @media (max-width: 1180px) {
   .modifier { padding-right: calc(var(--ac-bar-w) + var(--ac-s3)); }
 }
+
+/* ==========================================================================
+   Floor-cleared state
+   --------------------------------------------------------------------------
+   Once the target falls the rest of your hand is optional — you can bank the
+   floor and the unused balls pay gold instead. That was already true, but the
+   only sign of it was a small button appearing, which is easy to play straight
+   past. The whole hand bar now changes state to say so.
+   ========================================================================== */
+
+.handbar.cleared {
+  border-color: var(--good);
+  box-shadow: var(--ac-lift-2), inset 0 0 24px rgba(126, 231, 135, .12);
+}
+.handhint {
+  font-size: 10.5px;
+  letter-spacing: .04em;
+  color: var(--good);
+  margin-left: 10px;
+  /* The bank button must never wrap, so the hint is the part that gives way
+     on a narrow board. */
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.handbar .hand { min-width: 0; }
+.cashout { white-space: nowrap; flex: none; }
+.cashout em {
+  font-style: normal;
+  opacity: .65;
+  font-size: 9.5px;
+  letter-spacing: .12em;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  padding: 1px 4px;
+  margin-left: 6px;
+}
+
+/* Sound toggle on the menu card. */
+.optrow {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  align-items: center;
+  margin-top: 14px;
+}
+.optrow button { padding: 6px 12px; font-size: 11px; }
+.optrow button.off { opacity: .5; }

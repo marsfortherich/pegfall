@@ -48,6 +48,11 @@ Clear the target and you reach the shop. Miss it and the run is over.
 | Arrow keys | nudge the aim (hold Shift for fine) |
 | Enter | bank a cleared floor early (unused balls pay gold) |
 
+Once a floor's target falls you do **not** have to drop the rest of your hand.
+The hand bar turns green and every unused ball converts to gold when you bank.
+Keep dropping only if you want the overspill bonus, which scales the shop payout
+with how far past the target you finish.
+
 ## Code map
 
 | File | What's in it |
@@ -60,6 +65,8 @@ Clear the target and you reach the shop. Miss it and the run is over.
 | `js/render.js` | canvas drawing, trails, particles, popups |
 | `js/ui.js` | DOM HUD, shop, overlays, tooltips |
 | `js/save.js` | localStorage meta progression |
+| `js/settings.js` | sound and volume preferences, kept apart from run state |
+| `js/audio.js` | every sound, synthesised at runtime — no audio files |
 | `js/main.js` | canvas sizing, input, fixed-timestep loop |
 
 ### Adding content

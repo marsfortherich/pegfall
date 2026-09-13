@@ -63,6 +63,11 @@
     // the HUD knows who is playing before the first ball drops.
     if (window.Arcade) window.Arcade.init({ gameId: 'pegfall' });
 
+    // Browsers refuse to start an AudioContext before a gesture, and they
+    // suspend it again whenever the tab loses focus, so this is not `once`.
+    window.addEventListener('pointerdown', PK.Sfx.resume);
+    window.addEventListener('keydown', PK.Sfx.resume);
+
     canvas = document.getElementById('board');
     ctx = canvas.getContext('2d');
     G = PK.Game.G;

@@ -16,7 +16,7 @@
     G = game.G;
     ['run-floor', 'run-seed', 'run-gold', 'run-target', 'run-score', 'score-fill', 'score-pct',
      'relic-list', 'bag-list', 'hand-list', 'modifier', 'overlay', 'log-list', 'records',
-     'cashout', 'tooltip', 'hand-count', 'toast'].forEach(function (id) {
+     'cashout', 'tooltip', 'hand-count', 'toast', 'hand-hint'].forEach(function (id) {
       el[id] = $(id);
     });
 
@@ -41,7 +41,7 @@
       el.tooltip.style.top = y + 'px';
     });
 
-    el.cashout.addEventListener('click', function () { PK.Game.cashOut(); });
+    el.cashout.addEventListener('click', function () { PK.Sfx.ui(); PK.Game.cashOut(); });
 
     showMenu();
   }
@@ -97,8 +97,19 @@
     }).join('');
     el['hand-count'].textContent = G.hand.length;
 
-    el.cashout.classList.toggle('hidden',
-      !(G.screen === 'play' && !G.floorResolved && G.score >= G.target && G.hand.length > 0 && G.balls.length === 0));
+    // The floor is beaten and you still hold balls: banking is now a real
+    // choice, so say so in the hand bar rather than only surfacing a button.
+    var cleared = G.screen === 'play' && !G.floorResolved &&
+      G.score >= G.target && G.hand.length > 0;
+    var canBank = cleared && G.balls.length === 0;
+
+    el.cashout.classList.toggle('hidden', !canBank);
+    el.cashout.parentNode.classList.toggle('cleared', cleared);
+    el['hand-hint'].textContent = cleared
+      // Terse on purpose: the toast carries the full sentence once, this is
+      // the standing reminder and has to survive a 620px bar.
+      ? 'Unused balls pay gold'
+      : '';
 
     el['log-list'].innerHTML = G.log.length ? G.log.slice().reverse().map(function (l) {
       return '<li><span>' + esc(l.ball) + '</span><b>' + l.value + ' × ' +
@@ -152,7 +163,13 @@
       (next ? '<br>Next unlock: <b>' + esc(next.name) + '</b> at floor ' + next.floor : '<br>Everything is unlocked.') +
       '</p>' +
       '<p class="muted small">Click the board to aim and drop · <b>Space</b> drops at the last spot</p>' +
+      '<div class="optrow">' +
+      '<button id="btn-sfx"></button>' +
+      '<button id="btn-vol"></button>' +
+      '</div>' +
       '</div>', false);
+
+    wireSound();
 
     $('btn-start').addEventListener('click', function () {
       var v = $('seed-input').value.trim();
@@ -163,6 +180,38 @@
       if (e.key === 'Enter') $('btn-start').click();
     });
     arcadeRow(el.overlay.querySelector('.menu'));
+  }
+
+  /** Sound on/off and a three-step volume, persisted in PK.Settings. */
+  function wireSound() {
+    var sfxBtn = $('btn-sfx'), volBtn = $('btn-vol');
+    if (!sfxBtn || !volBtn) return;
+    var STEPS = [0.3, 0.6, 1];
+
+    function paint() {
+      var on = PK.Settings.sfx;
+      sfxBtn.textContent = on ? 'SOUND ON' : 'SOUND OFF';
+      sfxBtn.className = on ? '' : 'off';
+      var idx = STEPS.indexOf(PK.Settings.volume);
+      volBtn.textContent = 'VOL ' + (idx < 0 ? 2 : idx + 1) + '/3';
+      volBtn.disabled = !on;
+      volBtn.className = on ? '' : 'off';
+    }
+
+    sfxBtn.addEventListener('click', function () {
+      PK.Sfx.resume();
+      PK.setSetting('sfx', !PK.Settings.sfx);
+      paint();
+      if (PK.Settings.sfx) PK.Sfx.coin();
+    });
+    volBtn.addEventListener('click', function () {
+      PK.Sfx.resume();
+      var i = STEPS.indexOf(PK.Settings.volume);
+      PK.setSetting('volume', STEPS[(i + 1) % STEPS.length] || STEPS[1]);
+      paint();
+      PK.Sfx.coin();
+    });
+    paint();
   }
 
   /** Drop the shared arcade buttons into one of this game's own overlays. */

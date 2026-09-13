@@ -138,6 +138,7 @@
     G.modifier = pickModifier();
 
     var mod = G.modifier;
+    if (mod && mod.boss) PK.Sfx.boss();
     var board = PK.Board.make(G, G.rng, { extraRows: (mod && mod.extraRows) || 0 });
 
     // Relic + modifier slot rewrites
@@ -198,6 +199,7 @@
 
     var ball = PK.Physics.makeBall(def, x, DROP_Y, G.rng);
     ball.dropIndex = G.dropIndex++;
+    PK.Sfx.drop();
     G.stats.dropped++;
     callHook('onBallSpawn', ball, api);
     G.balls.push(ball);
@@ -209,6 +211,7 @@
     ball.pegHits++;
     G.stats.pegs++;
     peg.flash = 1;
+    PK.Sfx.peg(def.id, ball.pegHits);
 
     var base = def.value * (G.board.pegValueMul === undefined ? 1 : G.board.pegValueMul);
     ball.value += base;
@@ -219,6 +222,7 @@
       peg.hp++;
       if (peg.hp >= def.hp) {
         ball.value += def.breakValue;
+        PK.Sfx.shatter();
         api.shatter(peg);
         popup(peg.x, peg.y, '+' + def.breakValue, def.glow);
       }
@@ -251,8 +255,17 @@
     });
     score = Math.max(0, Math.round(sctx.score));
 
+    var wasShort = G.score < G.target;
     G.score += score;
     if (score > G.stats.bestBall) G.stats.bestBall = score;
+    PK.Sfx.land(ctx.mult, score);
+
+    // Crossing the target is the moment the remaining balls become optional,
+    // so it gets its own cue rather than being left to the player to notice.
+    if (wasShort && G.score >= G.target && G.hand.length > 0) {
+        PK.Sfx.cleared();
+        PK.UI.showToast('FLOOR CLEARED — bank it, or keep dropping for gold');
+    }
 
     var cx = slot.x + slot.w / 2;
     var color = ctx.mult >= 4 ? '#f2cc60' : (ctx.mult === 0 ? '#ff7b72' : '#e8eef7');
@@ -295,6 +308,7 @@
       G.stats.runTotal += G.score;
       PK.Save.save(G.meta);
 
+      PK.Sfx.bank();
       openShop(gained);
     } else if (hasRelic('second_chance')) {
       G.relics.splice(G.relics.indexOf('second_chance'), 1);
@@ -319,6 +333,7 @@
     G.meta.totalScore += G.score;
     G.stats.runTotal += G.score;
     PK.Save.save(G.meta);
+    PK.Sfx.gameOver();
 
     // Post the run to the arcade. Fire-and-forget: the game over screen never
     // waits on the network, and an offline arcade is a no-op.
@@ -381,8 +396,9 @@
 
   function buy(index) {
     var o = G.shop.offers[index];
-    if (!o || o.sold || G.gold < o.cost) return false;
+    if (!o || o.sold || G.gold < o.cost) { PK.Sfx.deny(); return false; }
     G.gold -= o.cost;
+    PK.Sfx.buy();
     o.sold = true;
 
     if (o.kind === 'relic') {
