@@ -41,7 +41,14 @@
     var cfg = Arcade.sso || {};
     if (!cfg.enabled || !Arcade.isConfigured()) return false;
     if (Arcade.isLocal()) return cfg.testLocally === true;
-    return !!cfg.url;
+    if (!cfg.url) return false;
+    // The hub is the broker's own origin: its session already is the shared
+    // one, so going through an iframe to reach itself would just add a hop and
+    // a way to fail.
+    try {
+      if (new URL(cfg.url, global.location.href).origin === global.location.origin) return false;
+    } catch (e) { return false; }
+    return true;
   }
 
   function active() { return ready && !failed; }
