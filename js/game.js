@@ -387,7 +387,6 @@
     if (G.log.length > 6) G.log.shift();
 
     persist();
-    PK.UI.refresh();
   }
 
   function round1(v) { return Math.round(v * 10) / 10; }
@@ -563,6 +562,7 @@
     if (G.shake > 0) G.shake = Math.max(0, G.shake - dt * 26);
 
     if (G.screen === 'play' && G.board) {
+      var settled = false;
       for (i = G.balls.length - 1; i >= 0; i--) {
         var ball = G.balls[i];
         PK.Physics.step(ball, G.board, dt, {
@@ -571,12 +571,18 @@
           onLand: onLand,
           magnetTarget: api.magnetTarget
         });
-        if (ball.landed) G.balls.splice(i, 1);
-        else if (ball.age > 25) { G.balls.splice(i, 1); }   // safety valve
+        if (ball.landed) { G.balls.splice(i, 1); settled = true; }
+        else if (ball.age > 25) { G.balls.splice(i, 1); settled = true; }   // safety valve
       }
       G.board.pegs.forEach(function (p) { if (p.flash > 0) p.flash = Math.max(0, p.flash - dt * 3.2); });
       G.board.slots.forEach(function (s) { if (s.flash > 0) s.flash = Math.max(0, s.flash - dt * 2); });
       maybeResolveFloor();
+
+      /* The HUD is redrawn here rather than from onLand, which runs inside
+         Physics.step while the ball is still in G.balls — anything keyed on
+         "the board is still", the BANK IT button above all, read as false
+         there and never got another chance to update. */
+      if (settled) PK.UI.refresh();
     }
 
     for (i = G.popups.length - 1; i >= 0; i--) {
