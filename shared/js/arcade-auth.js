@@ -150,24 +150,63 @@
 
   /* -------------------------------------------------------------- profile */
 
-  /** The users/{uid} document: display name and cross-game totals. */
+  /* Registration and the auth-state listener both race to create the profile
+     document: createUserWithEmailAndPassword fires onAuthStateChanged before
+     updateProfile has run, so whichever lands first decides the name. This
+     holds the chosen name across that gap so both writers agree on it. */
+  var pendingName = null;
+
+  /** The users/{uid} document: the display name every leaderboard row copies. */
   function ensureProfile(u) {
     var ref = fb.db.collection('users').doc(u.uid);
+    var wanted = pendingName || u.displayName || defaultName(u);
     return ref.get().then(function (snap) {
       if (snap.exists) return Object.assign({ uid: u.uid }, snap.data());
-      var doc = {
-        uid: u.uid,
-        displayName: u.displayName || defaultName(u),
-        displayNameLower: (u.displayName || defaultName(u)).toLowerCase(),
-        createdAt: global.firebase.firestore.FieldValue.serverTimestamp(),
-        updatedAt: global.firebase.firestore.FieldValue.serverTimestamp()
-      };
-      return ref.set(doc).then(function () { return doc; });
+      return writeProfile(u.uid, wanted, false).then(function () {
+        return { uid: u.uid, displayName: wanted };
+      });
     }).catch(function () {
       // Rules or connectivity: fall back to a local-only view of the user so
       // the UI can still show who is signed in.
-      return { uid: u.uid, displayName: u.displayName || defaultName(u) };
+      return { uid: u.uid, displayName: wanted };
     });
+  }
+
+  /**
+   * Write the profile, as a create or an update depending on what is already
+   * there.
+   *
+   * The distinction matters: the rules only let an update touch the name and
+   * updatedAt, so a blind set() over an existing document re-sends uid and
+   * createdAt and is refused. `exists` is passed when the caller already knows.
+   */
+  function writeProfile(uid, name, exists) {
+    var ref = fb.db.collection('users').doc(uid);
+    var stampNow = global.firebase.firestore.FieldValue.serverTimestamp();
+
+    function update() {
+      return ref.update({
+        displayName: name,
+        displayNameLower: name.toLowerCase(),
+        updatedAt: stampNow
+      });
+    }
+    function create() {
+      return ref.set({
+        uid: uid,
+        displayName: name,
+        displayNameLower: name.toLowerCase(),
+        createdAt: stampNow,
+        updatedAt: stampNow
+      });
+    }
+
+    if (exists === true) return update();
+    if (exists === false) {
+      // Lost the race: the other writer created it, so fall back to an update.
+      return create().catch(function () { return update(); });
+    }
+    return ref.get().then(function (snap) { return snap.exists ? update() : create(); });
   }
 
   function defaultName(u) {
@@ -198,22 +237,23 @@
     if (!/^[\w .'-]+$/.test(name)) return Promise.reject(new Error('NAME_CHARS'));
 
     return requireReady().then(function () {
+      // Claimed before the account exists, so the auth-state listener that
+      // fires inside createUser already knows which name to write.
+      pendingName = name;
       return fb.auth.createUserWithEmailAndPassword(String(email).trim(), password);
     }).then(function (cred) {
       return cred.user.updateProfile({ displayName: name }).then(function () {
-        return fb.db.collection('users').doc(cred.user.uid).set({
-          uid: cred.user.uid,
-          displayName: name,
-          displayNameLower: name.toLowerCase(),
-          createdAt: global.firebase.firestore.FieldValue.serverTimestamp(),
-          updatedAt: global.firebase.firestore.FieldValue.serverTimestamp()
-        });
+        return writeProfile(cred.user.uid, name);
       }).then(function () {
+        pendingName = null;
         state.user = { uid: cred.user.uid, email: cred.user.email, displayName: name };
         state.profile = { uid: cred.user.uid, displayName: name };
         emit();
         return cred.user;
       });
+    }).catch(function (err) {
+      pendingName = null;
+      throw err;
     });
   }
 
@@ -238,11 +278,7 @@
     if (!state.user) return Promise.reject(new Error('SIGNED_OUT'));
 
     return fb.auth.currentUser.updateProfile({ displayName: name }).then(function () {
-      return fb.db.collection('users').doc(state.user.uid).set({
-        displayName: name,
-        displayNameLower: name.toLowerCase(),
-        updatedAt: global.firebase.firestore.FieldValue.serverTimestamp()
-      }, { merge: true });
+      return writeProfile(state.user.uid, name);
     }).then(function () {
       state.user.displayName = name;
       if (state.profile) state.profile.displayName = name;
