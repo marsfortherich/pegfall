@@ -46,18 +46,43 @@
 
   /* --------------------------------------------------------------- submit */
 
+  /** Keep only declared metrics, as non-negative integers under the ceiling. */
+  function cleanMetrics(game, metrics) {
+    var out = {};
+    if (!metrics) return out;
+    var primary = Arcade.primaryMetric(game).id;
+    Arcade.metricsOf(game).forEach(function (m) {
+      if (m.id === primary) return;               // the primary lives in `score`
+      var v = Number(metrics[m.id]);
+      if (!isFinite(v) || v < 0) return;
+      out[m.id] = Math.min(Math.floor(v), game.scoreMax);
+    });
+    return out;
+  }
+
   /**
    * Record the result of a finished run.
    *
    * Always appends to `runs` (so "games played" and score history are real),
-   * and lifts the player's leaderboard row only when the run beat their best.
+   * lifts the player's headline row only when the run beat their best, and
+   * keeps every secondary metric at its own best independently.
    *
-   * Resolves to { ok, skipped, best, isRecord, rank } and never rejects —
-   * a dead network must not interrupt a game-over screen.
+   * Resolves to { ok, skipped, best, isRecord, rank } and never rejects — a
+   * dead network must not interrupt a game-over screen.
+   *
+   * @param payload either a number (the primary metric — the original call
+   *        shape, still supported) or { score, metrics, meta }.
    */
-  function submit(gameId, score, meta) {
+  function submit(gameId, payload, meta) {
     var game = Arcade.gameById(gameId);
     var user = Arcade.auth.user;
+    var score = payload;
+    var metrics = null;
+    if (payload && typeof payload === 'object') {
+      score = payload.score;
+      metrics = payload.metrics;
+      if (meta === undefined) meta = payload.meta;
+    }
 
     if (!Arcade.isConfigured() || !db()) {
       return Promise.resolve({ ok: false, skipped: 'offline' });
@@ -70,6 +95,7 @@
     if (score > game.scoreMax) score = game.scoreMax;
 
     var clean = cleanMeta(meta);
+    var cleanM = cleanMetrics(game, metrics);
     var name = Arcade.auth.displayName();
     var ref = entriesRef(gameId).doc(user.uid);
 
@@ -89,6 +115,7 @@
             gameId: gameId,
             displayName: name,
             score: score,
+            metrics: cleanM,
             plays: 1,
             meta: clean,
             firstAt: stamp(),
@@ -104,6 +131,22 @@
           updatedAt: stamp()
         };
         if (beat) { patch.score = score; patch.meta = clean; }
+
+        /* Each secondary metric is its own board, so it keeps its own best
+           whether or not this run beat the headline number. */
+        var prevM = prev.metrics || {};
+        var merged = {};
+        var moved = false;
+        Object.keys(cleanM).forEach(function (k) {
+          var best = Math.max(cleanM[k], prevM[k] || 0);
+          merged[k] = best;
+          if (best !== prevM[k]) moved = true;
+        });
+        Object.keys(prevM).forEach(function (k) {
+          if (merged[k] === undefined) merged[k] = prevM[k];
+        });
+        if (moved) patch.metrics = merged;
+
         tx.update(ref, patch);
         return { best: beat ? score : (prev.score || 0), isRecord: beat };
       });
@@ -126,24 +169,32 @@
    * SDK offers it and falls back to scanning the top of the board, which is
    * exact for anyone inside `rankScanLimit` and honest about it beyond that.
    */
-  function rankOf(gameId, score) {
+  function rankOf(gameId, score, metricId) {
     if (!db() || !isFinite(score)) return Promise.resolve(null);
-    var q = entriesRef(gameId).where('score', '>', score);
+    var field = Arcade.metricField(Arcade.gameById(gameId), metricId);
+    var q = entriesRef(gameId).where(field, '>', score);
 
     if (typeof q.count === 'function') {
       return q.count().get()
         .then(function (agg) { return agg.data().count + 1; })
-        .catch(function () { return scanRank(gameId, score); });
+        .catch(function () { return scanRank(gameId, score, field); });
     }
-    return scanRank(gameId, score);
+    return scanRank(gameId, score, field);
   }
 
-  function scanRank(gameId, score) {
+  /** Read a metric off a row, whether it is the primary or a nested one. */
+  function valueAt(data, field) {
+    if (field === 'score') return data.score || 0;
+    var key = field.slice('metrics.'.length);
+    return (data.metrics && data.metrics[key]) || 0;
+  }
+
+  function scanRank(gameId, score, field) {
     var limit = Arcade.options.rankScanLimit;
-    return entriesRef(gameId).orderBy('score', 'desc').limit(limit).get()
+    return entriesRef(gameId).orderBy(field, 'desc').limit(limit).get()
       .then(function (snap) {
         var above = 0;
-        snap.forEach(function (d) { if ((d.data().score || 0) > score) above++; });
+        snap.forEach(function (d) { if (valueAt(d.data(), field) > score) above++; });
         if (above >= limit) return { atLeast: limit + 1 };
         return above + 1;
       })
@@ -157,14 +208,20 @@
    * Resolves to { rows, you, offline, error } — `you` is null when the player
    * is signed out or has never posted a score.
    */
-  function board(gameId, topN) {
+  function board(gameId, topN, metricId) {
     topN = topN || Arcade.options.topN;
+    var game = Arcade.gameById(gameId);
+    var metric = Arcade.metricById(game, metricId);
+    var field = Arcade.metricField(game, metric.id);
 
     if (!Arcade.isConfigured() || !db()) {
-      return Promise.resolve({ rows: [], you: null, offline: true });
+      return Promise.resolve({ rows: [], you: null, offline: true, metric: metric.id });
     }
 
-    return entriesRef(gameId).orderBy('score', 'desc').limit(topN).get()
+    /* A row that has never recorded this metric simply has no such field, so
+       Firestore leaves it out of the ordered index — an unplayed category is
+       absent from its board rather than sitting at the bottom on zero. */
+    return entriesRef(gameId).orderBy(field, 'desc').limit(topN).get()
       .then(function (snap) {
         var rows = [];
         snap.forEach(function (d, i) {
@@ -173,31 +230,33 @@
             uid: v.uid || d.id,
             rank: rows.length + 1,
             name: v.displayName || 'Player',
-            score: v.score || 0,
+            score: valueAt(v, field),
             plays: v.plays || 0,
             meta: v.meta || {}
           });
         });
 
         var user = Arcade.auth.user;
-        if (!user) return { rows: rows, you: null };
+        if (!user) return { rows: rows, you: null, metric: metric.id };
 
         var inTop = null;
         rows.forEach(function (r) { if (r.uid === user.uid) { r.you = true; inTop = r; } });
-        if (inTop) return { rows: rows, you: inTop, youInTop: true };
+        if (inTop) return { rows: rows, you: inTop, youInTop: true, metric: metric.id };
 
         // Outside the top N: fetch the player's own row and rank it.
         return entriesRef(gameId).doc(user.uid).get().then(function (mine) {
-          if (!mine.exists) return { rows: rows, you: null };
+          if (!mine.exists) return { rows: rows, you: null, metric: metric.id };
           var v = mine.data();
-          return rankOf(gameId, v.score || 0).then(function (rank) {
+          var mineValue = valueAt(v, field);
+          return rankOf(gameId, mineValue, metric.id).then(function (rank) {
             return {
               rows: rows,
+              metric: metric.id,
               you: {
                 uid: user.uid,
                 rank: rank,
                 name: v.displayName || Arcade.auth.displayName(),
-                score: v.score || 0,
+                score: mineValue,
                 plays: v.plays || 0,
                 meta: v.meta || {},
                 you: true
@@ -208,7 +267,7 @@
         });
       })
       .catch(function (err) {
-        return { rows: [], you: null, error: Arcade.auth.describe(err) };
+        return { rows: [], you: null, metric: metric.id, error: Arcade.auth.describe(err) };
       });
   }
 

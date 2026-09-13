@@ -178,21 +178,28 @@
     });
 
     var localBoard = Arcade.scores.board;
-    Arcade.scores.submit = function (gameId, score, meta) {
-      return call('submit', { gameId: gameId, score: score, meta: meta })
+    Arcade.scores.submit = function (gameId, payload, meta) {
+      var score = payload, metrics = null;
+      if (payload && typeof payload === 'object') {
+        score = payload.score;
+        metrics = payload.metrics;
+        if (meta === undefined) meta = payload.meta;
+      }
+      return call('submit', { gameId: gameId, score: score, metrics: metrics, meta: meta })
         .catch(function (err) { return { ok: false, error: describeBroker(err) }; });
     };
-    Arcade.scores.board = function (gameId, topN) {
-      return call('board', { gameId: gameId, topN: topN })
+    Arcade.scores.board = function (gameId, topN, metricId) {
+      return call('board', { gameId: gameId, topN: topN, metricId: metricId })
         .catch(function (err) {
           // A board is public, so a broken broker should not hide it: read it
           // straight from this origin instead.
-          if (Arcade.fb && Arcade.fb.db) return localBoard(gameId, topN);
+          if (Arcade.fb && Arcade.fb.db) return localBoard(gameId, topN, metricId);
           return { rows: [], you: null, error: describeBroker(err) };
         });
     };
-    Arcade.scores.rankOf = function (gameId, score) {
-      return call('rankOf', { gameId: gameId, score: score }).catch(function () { return null; });
+    Arcade.scores.rankOf = function (gameId, score, metricId) {
+      return call('rankOf', { gameId: gameId, score: score, metricId: metricId })
+        .catch(function () { return null; });
     };
     Arcade.scores.myStandings = function () {
       return call('myStandings').then(function (rows) {

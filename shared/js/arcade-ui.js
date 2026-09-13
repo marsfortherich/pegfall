@@ -16,6 +16,7 @@
   var bar = null;
   var switcher = null;
   var currentGameId = null;
+  var loadToken = 0;
 
   /* ------------------------------------------------------------- elements */
 
@@ -281,7 +282,7 @@
 
   /* ---------------------------------------------------------- leaderboard */
 
-  function leaderboardRows(host, data, game) {
+  function leaderboardRows(host, data, game, metric) {
     host.innerHTML = '';
 
     if (data.offline) {
@@ -296,12 +297,12 @@
     var head = el('div', 'ac-lb__head');
     head.appendChild(el('span', null, '#'));
     head.appendChild(el('span', null, 'Player'));
-    head.appendChild(el('span', null, game.scoreLabel));
+    head.appendChild(el('span', null, metric.label));
     host.appendChild(head);
 
     var list = el('div', 'ac-lb');
     if (!data.rows.length) {
-      list.appendChild(emptyNote('No scores yet. Finish a run and the board is yours.'));
+      list.appendChild(emptyNote('Nothing on this board yet. Finish a run and it is yours.'));
     }
     data.rows.forEach(function (r) { list.appendChild(row(r, game)); });
     host.appendChild(list);
@@ -312,13 +313,14 @@
       var cap = el('div', 'ac-lb__head');
       cap.appendChild(el('span', null, ''));
       cap.appendChild(el('span', null, 'Your standing'));
-      cap.appendChild(el('span', null, game.scoreLabel));
+      cap.appendChild(el('span', null, metric.label));
       strip.appendChild(el('div', 'ac-lb__gap', '···'));
       strip.appendChild(cap);
       strip.appendChild(row(data.you, game));
       host.appendChild(strip);
     } else if (!data.you && Arcade.auth.isSignedIn()) {
-      host.appendChild(emptyNote('You have not posted a score in ' + game.name + ' yet.'));
+      host.appendChild(emptyNote('No ' + metric.label.toLowerCase() + ' recorded in ' +
+        game.name + ' yet.'));
     } else if (!Arcade.auth.isSignedIn()) {
       var signin = el('div', 'ac-standing');
       var note = el('div', 'ac-note');
@@ -354,53 +356,95 @@
     return el('div', 'ac-lb__empty', text);
   }
 
-  function showLeaderboard(gameId) {
+  function showLeaderboard(gameId, metricId) {
     var id = gameId || currentGameId || (Arcade.games[0] && Arcade.games[0].id);
     var game = Arcade.gameById(id);
+    var metric = Arcade.metricById(game, metricId);
 
     modal({
       wide: true,
       title: 'Leaderboard',
-      sub: game.name + ' — top ' + Arcade.options.topN + ' by ' + game.scoreLabel.toLowerCase(),
+      sub: subtitle(),
       body: function (body, api) {
-        // A row of game tabs, so the leaderboard is a platform surface rather
+        function subtitleNow() { api.setTitle('Leaderboard', subtitle()); }
+
+        // Game tabs, so the leaderboard reads as a platform surface rather
         // than a per-game one.
+        var gameTabs = null;
         if (Arcade.games.length > 1) {
-          var tabs = el('div', 'ac-tabs');
+          gameTabs = el('div', 'ac-tabs');
           Arcade.games.forEach(function (g) {
             var t = el('button', 'ac-tab', g.name);
             t.type = 'button';
+            t.dataset.game = g.id;
             t.setAttribute('aria-selected', g.id === id ? 'true' : 'false');
             t.addEventListener('click', function () {
               if (g.id === id) return;
               id = g.id;
               game = g;
-              Array.prototype.forEach.call(tabs.children, function (c) {
+              metric = Arcade.primaryMetric(game);   // each game has its own set
+              Array.prototype.forEach.call(gameTabs.children, function (c) {
                 c.setAttribute('aria-selected', c === t ? 'true' : 'false');
               });
-              api.setTitle('Leaderboard', g.name + ' — top ' + Arcade.options.topN +
-                ' by ' + g.scoreLabel.toLowerCase());
+              drawMetricTabs();
+              subtitleNow();
               load();
             });
-            tabs.appendChild(t);
+            gameTabs.appendChild(t);
           });
-          body.appendChild(tabs);
+          body.appendChild(gameTabs);
+        }
+
+        /* One game can rank players several ways — a deep run and a huge
+           single turn are different achievements — so the category is a
+           first-class switch rather than a fixed column. */
+        var metricTabs = el('div', 'ac-metrics');
+        body.appendChild(metricTabs);
+
+        function drawMetricTabs() {
+          metricTabs.innerHTML = '';
+          var all = Arcade.metricsOf(game);
+          metricTabs.hidden = all.length < 2;
+          all.forEach(function (m) {
+            var t = el('button', 'ac-metric', m.label);
+            t.type = 'button';
+            t.setAttribute('aria-selected', m.id === metric.id ? 'true' : 'false');
+            t.addEventListener('click', function () {
+              if (m.id === metric.id) return;
+              metric = m;
+              Array.prototype.forEach.call(metricTabs.children, function (c) {
+                c.setAttribute('aria-selected', c === t ? 'true' : 'false');
+              });
+              subtitleNow();
+              load();
+            });
+            metricTabs.appendChild(t);
+          });
         }
 
         var host = el('div');
         body.appendChild(host);
 
         function load() {
+          var token = ++loadToken;
           host.innerHTML = '';
           host.appendChild(el('div', 'ac-spinner'));
-          Arcade.scores.board(id).then(function (data) {
-            leaderboardRows(host, data, game);
+          var forGame = game, forMetric = metric;
+          Arcade.scores.board(id, null, metric.id).then(function (data) {
+            if (token !== loadToken) return;   // a later switch already won
+            leaderboardRows(host, data, forGame, forMetric);
           });
         }
+
+        drawMetricTabs();
         load();
       },
       foot: function (foot, api) { foot.appendChild(btn('Close', '', api.close)); }
     });
+
+    function subtitle() {
+      return game.name + ' — top ' + Arcade.options.topN + ' by ' + metric.label.toLowerCase();
+    }
   }
 
   /* -------------------------------------------------------- account panel */
@@ -469,7 +513,7 @@
             r.appendChild(el('span', 'ac-lb__rank', s.entry ? rankText(s.entry.rank) : '—'));
             var nameCell = el('span', 'ac-lb__name', s.game.name);
             nameCell.appendChild(el('span', 'ac-lb__meta', s.entry
-              ? s.game.scoreLabel + ' · ' + s.entry.plays +
+              ? Arcade.primaryMetric(s.game).label + ' · ' + s.entry.plays +
                 (s.entry.plays === 1 ? ' run' : ' runs')
               : 'no score yet'));
             r.appendChild(nameCell);

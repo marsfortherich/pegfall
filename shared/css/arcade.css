@@ -555,6 +555,36 @@ html[data-arcade-game="hub"] {
    Leaderboard
    ========================================================================= */
 
+/* Category switch. Deliberately lighter than the game tabs above it: the game
+   is the bigger choice, the metric a refinement within it. */
+.ac-metrics {
+  display: flex;
+  gap: var(--ac-s1);
+  flex-wrap: wrap;
+  margin-bottom: var(--ac-s4);
+}
+.ac-metric {
+  font-family: var(--ac-font-ui);
+  font-weight: 700;
+  font-size: var(--ac-fs-micro);
+  letter-spacing: var(--ac-track-caps);
+  text-transform: uppercase;
+  color: var(--ac-ink-dim);
+  background: transparent;
+  border: 1px solid var(--ac-line);
+  border-radius: var(--ac-r-pill);
+  padding: 5px 12px;
+  cursor: pointer;
+  transition: color var(--ac-fast), background var(--ac-fast), border-color var(--ac-fast);
+}
+.ac-metric:hover { color: var(--ac-ink); background: var(--ac-surface-2); }
+.ac-metric[aria-selected="true"] {
+  color: var(--ac-accent-ink);
+  background: linear-gradient(180deg, var(--ac-accent), var(--ac-accent-deep));
+  border-color: var(--ac-accent);
+}
+.ac-metric:focus-visible { outline: 2px solid var(--ac-gold); outline-offset: 2px; }
+
 .ac-lb { display: flex; flex-direction: column; gap: 3px; }
 .ac-lb__head {
   display: grid;

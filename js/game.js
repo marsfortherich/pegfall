@@ -448,11 +448,15 @@
     // Post the run to the arcade. Fire-and-forget: the game over screen never
     // waits on the network, and an offline arcade is a no-op.
     if (window.Arcade) {
-      window.Arcade.submitScore('pegfall', G.stats.runTotal, {
-        floor: G.floor,
-        seed: G.seed,
-        relics: G.relics.length,
-        pegs: G.stats.pegs
+      window.Arcade.submitScore('pegfall', {
+        score: G.stats.runTotal,
+        metrics: { floor: G.floor, bestBall: G.stats.bestBall },
+        meta: {
+          floor: G.floor,
+          seed: G.seed,
+          relics: G.relics.length,
+          pegs: G.stats.pegs
+        }
       });
     }
 

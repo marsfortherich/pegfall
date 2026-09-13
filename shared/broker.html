@@ -90,13 +90,14 @@
     },
 
     submit: function (a) {
-      return Arcade.scores.submit(a.gameId, a.score, a.meta);
+      return Arcade.scores.submit(a.gameId,
+        { score: a.score, metrics: a.metrics, meta: a.meta });
     },
     board: function (a) {
-      return Arcade.scores.board(a.gameId, a.topN);
+      return Arcade.scores.board(a.gameId, a.topN, a.metricId);
     },
     rankOf: function (a) {
-      return Arcade.scores.rankOf(a.gameId, a.score);
+      return Arcade.scores.rankOf(a.gameId, a.score, a.metricId);
     },
     myStandings: function () {
       // The registry object itself is not serialisable across origins, so the

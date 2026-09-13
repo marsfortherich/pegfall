@@ -55,7 +55,10 @@
        path       location relative to the arcade root (one-origin deploys)
        url        absolute origin for this game, used once deployed; the
                   relative `path` is used when browsing locally
-       scoreLabel what the leaderboard number means in this game
+       metrics    the leaderboard categories this game exposes. The first is
+                  the primary one and is stored in the row's `score` field;
+                  the rest live under `metrics.<id>`. Each is { id, label }.
+                  Adding one is a data change — no rules or index work.
        scoreMax   sanity ceiling; mirrored in firestore.rules
        metaFields extra per-entry fields the leaderboard row may show
      -------------------------------------------------------------------- */
@@ -68,7 +71,11 @@
       path: 'Plinko/index.html',
       url: 'https://pegfall.marsindustries.dev/',
       theme: 'pegfall',
-      scoreLabel: 'Run score',
+      metrics: [
+        { id: 'score', label: 'Run score' },
+        { id: 'floor', label: 'Deepest floor' },
+        { id: 'bestBall', label: 'Best single ball' }
+      ],
       scoreMax: 1e12,
       metaFields: ['floor']
     },
@@ -80,7 +87,11 @@
       path: 'Yahtzee Roguelike/index.html',
       url: 'https://onemoreroll.marsindustries.dev/',
       theme: 'onemoreroll',
-      scoreLabel: 'Best turn',
+      metrics: [
+        { id: 'score', label: 'Best turn' },
+        { id: 'ante', label: 'Furthest ante' },
+        { id: 'money', label: 'Money earned' }
+      ],
       scoreMax: 1e15,
       metaFields: ['ante']
     },
@@ -92,7 +103,11 @@
       path: 'Roulette Roguelike/index.html',
       url: 'https://nolimit.marsindustries.dev/',
       theme: 'nolimit',
-      scoreLabel: 'Best spin',
+      metrics: [
+        { id: 'score', label: 'Best spin' },
+        { id: 'ante', label: 'Furthest ante' },
+        { id: 'tables', label: 'Tables cleared' }
+      ],
       scoreMax: 1e15,
       metaFields: ['ante']
     }
@@ -149,11 +164,31 @@
     return Arcade.options.rootPath + Arcade.options.hubPath;
   };
 
+  /* --- metric helpers -------------------------------------------------
+     The primary metric lives in the row's `score` field and the rest under
+     `metrics.<id>`, so the headline board keeps the strict "can only go up"
+     rule while new categories need no rules change. */
+  Arcade.metricsOf = function (game) {
+    if (game && game.metrics && game.metrics.length) return game.metrics;
+    return [{ id: 'score', label: (game && game.scoreLabel) || 'Score' }];
+  };
+  Arcade.primaryMetric = function (game) { return Arcade.metricsOf(game)[0]; };
+  Arcade.metricById = function (game, id) {
+    var all = Arcade.metricsOf(game);
+    for (var i = 0; i < all.length; i++) if (all[i].id === id) return all[i];
+    return all[0];
+  };
+  /** Where a metric is stored on the entry document. */
+  Arcade.metricField = function (game, id) {
+    return id === Arcade.primaryMetric(game).id ? 'score' : 'metrics.' + id;
+  };
+
   Arcade.gameById = function (id) {
     for (var i = 0; i < Arcade.games.length; i++) {
       if (Arcade.games[i].id === id) return Arcade.games[i];
     }
-    return { id: id, name: id, glyph: '◆', scoreLabel: 'Score', metaFields: [] };
+    return { id: id, name: id, glyph: '◆', scoreLabel: 'Score',
+             metrics: [{ id: 'score', label: 'Score' }], metaFields: [] };
   };
 
   /* --------------------------------------------------------------------
