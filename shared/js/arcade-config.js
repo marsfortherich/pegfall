@@ -127,7 +127,7 @@
 
   Arcade.hubHref = function () {
     if (Arcade.hubUrl && !Arcade.isLocal()) return Arcade.hubUrl;
-    return Arcade.options.rootPath + 'index.html';
+    return Arcade.options.rootPath + Arcade.options.hubPath;
   };
 
   Arcade.gameById = function (id) {
@@ -148,7 +148,10 @@
     /* How far above the arcade root each game sits, so the game switcher can
        build links. Overridden per game in Arcade.init if a game is deployed
        standalone. */
-    rootPath: '../'
+    rootPath: '../',
+    /* Where the hub sits relative to the arcade root when browsing locally.
+       Deployed it is its own site, so Arcade.hubUrl wins and this is unused. */
+    hubPath: 'hub/index.html'
   };
 
   Arcade.isConfigured = function () {

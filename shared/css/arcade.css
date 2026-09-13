@@ -218,6 +218,9 @@ html[data-arcade-game="hub"] {
 .ac-btn--sm { padding: 6px 11px; font-size: var(--ac-fs-tiny); }
 .ac-btn--lg { padding: 13px 26px; font-size: var(--ac-fs-md); }
 .ac-btn--block { width: 100%; }
+/* The "back to the arcade" link: a button that is actually an anchor. */
+.ac-btn--home { text-decoration: none; color: var(--ac-gold); }
+.ac-btn--home .ac-bar__diamond { width: 7px; height: 7px; }
 
 /* ---- surfaces ---------------------------------------------------------- */
 .ac-panel {
@@ -310,24 +313,58 @@ html[data-arcade-game="hub"] {
   user-select: none;
 }
 
+/* Brand group: the wordmark links home, the caret opens the switcher. */
+.ac-bar__brand {
+  display: flex;
+  align-items: center;
+  border-right: 1px solid var(--ac-line);
+  padding-right: 4px;
+  margin-right: var(--ac-s1);
+}
+
 .ac-bar__mark {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 0 10px 0 8px;
+  padding: 5px 8px;
+  border-radius: var(--ac-r-pill);
   font-size: var(--ac-fs-micro);
   letter-spacing: var(--ac-track-caps);
   text-transform: uppercase;
   color: var(--ac-gold);
   border: 0;
-  border-right: 1px solid var(--ac-line);
-  margin-right: var(--ac-s1);
   cursor: pointer;
   background: none;
+  text-decoration: none;
   font-family: inherit;
   font-weight: 700;
+  transition: background var(--ac-fast), filter var(--ac-fast);
 }
-.ac-bar__mark:hover { filter: brightness(1.25); }
+.ac-bar__mark:hover { filter: brightness(1.25); background: var(--ac-surface-2); }
+.ac-bar__mark:focus-visible { outline: 2px solid var(--ac-gold); outline-offset: 1px; }
+
+/* On the hub itself there is nowhere to go, so the mark is a label. */
+.ac-bar__mark.is-here { cursor: default; }
+.ac-bar__mark.is-here:hover { filter: none; background: none; }
+
+.ac-bar__caret {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  font-size: 10px;
+  line-height: 1;
+  color: var(--ac-ink-dim);
+  background: none;
+  border: 0;
+  border-radius: var(--ac-r-pill);
+  cursor: pointer;
+  font-family: inherit;
+  transition: background var(--ac-fast), color var(--ac-fast);
+}
+.ac-bar__caret:hover { background: var(--ac-surface-2); color: var(--ac-ink); }
+.ac-bar__caret:focus-visible { outline: 2px solid var(--ac-gold); outline-offset: 1px; }
 .ac-bar__diamond {
   width: 9px; height: 9px;
   background: var(--ac-gold);
@@ -646,7 +683,9 @@ html[data-arcade-game="hub"] {
 
 @media (max-width: 720px) {
   .ac-bar { top: 6px; right: 6px; }
-  .ac-bar__mark span { display: none; }
+  /* Keep the diamond (and the link) but drop the word on narrow screens. */
+  .ac-bar__mark span:not(.ac-bar__diamond) { display: none; }
+  .ac-bar__mark { padding: 5px 6px; }
   .ac-stats { grid-template-columns: 1fr 1fr; }
 }
 

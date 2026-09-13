@@ -540,13 +540,34 @@
 
     bar = el('div', 'ac-bar ac-root');
 
-    var mark = el('button', 'ac-bar__mark');
-    mark.type = 'button';
-    mark.title = 'Switch game';
+    /* The wordmark goes home, the caret opens the switcher — the ordinary web
+       convention. Before this the mark did both jobs and the hub was two
+       clicks deep inside something labelled "switch game", which is not where
+       anyone looks for "back". */
+    var brand = el('div', 'ac-bar__brand');
+    var onHub = !currentGameId;
+
+    var mark = el(onHub ? 'div' : 'a', 'ac-bar__mark' + (onHub ? ' is-here' : ''));
     mark.appendChild(el('span', 'ac-bar__diamond'));
     mark.appendChild(el('span', null, 'Arcade'));
-    mark.addEventListener('click', function (e) { e.stopPropagation(); toggleSwitcher(); });
-    bar.appendChild(mark);
+    if (onHub) {
+      mark.title = 'You are at the arcade hub';
+    } else {
+      mark.href = Arcade.hubHref();
+      mark.title = 'Back to the arcade hub';
+      mark.setAttribute('aria-label', 'Back to the arcade hub');
+    }
+    brand.appendChild(mark);
+
+    var caret = el('button', 'ac-bar__caret', '▾');
+    caret.type = 'button';
+    caret.title = 'Switch game';
+    caret.setAttribute('aria-label', 'Switch game');
+    caret.setAttribute('aria-haspopup', 'true');
+    caret.addEventListener('click', function (e) { e.stopPropagation(); toggleSwitcher(); });
+    brand.appendChild(caret);
+
+    bar.appendChild(brand);
 
     var lb = el('button', 'ac-bar__btn', 'Leaderboard');
     lb.type = 'button';
@@ -631,6 +652,18 @@
   function inlineActions(opts) {
     opts = opts || {};
     var row = el('div', 'ac-inline ac-root');
+
+    /* A real link, not a button: middle-click and "open in new tab" should
+       work the way they do anywhere else. Leftmost, so the brand sits in the
+       same place here as it does in the bar. */
+    if (opts.hub !== false) {
+      var home = el('a', 'ac-btn ac-btn--sm ac-btn--home');
+      home.href = Arcade.hubHref();
+      home.appendChild(el('span', 'ac-bar__diamond'));
+      home.appendChild(el('span', null, opts.hubLabel || 'Arcade'));
+      row.appendChild(home);
+    }
+
     row.appendChild(btn(opts.leaderboardLabel || 'Leaderboard', 'ac-btn--sm', function () {
       showLeaderboard(opts.gameId || currentGameId);
     }));
