@@ -428,3 +428,16 @@ button:focus-visible { outline: 2px solid var(--ac-gold); outline-offset: 2px; }
 
 /* The menu grows a second action when a run is in progress. */
 .menu .newrun { width: 100%; margin-top: 8px; }
+
+/* A number that just changed says so. */
+.bump { animation: bump 420ms cubic-bezier(.2, .8, .3, 1); }
+@keyframes bump {
+  30% { transform: scale(1.22); text-shadow: 0 0 12px currentColor; }
+}
+.scorenums .score { transition: color .2s ease; }
+.fill.done { animation: fillpulse 1.6s ease-in-out infinite; }
+@keyframes fillpulse { 50% { filter: brightness(1.25); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .bump, .fill.done { animation: none; }
+}

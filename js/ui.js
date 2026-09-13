@@ -53,13 +53,56 @@
 
   /* ------------------------------------------------------------------- hud */
 
+  var lastScore = 0, lastGold = -1, rollRaf = 0;
+
+  /** Count a number up, and always land on it even in a throttled tab. */
+  function rollTo(node, from, to) {
+    if (!node) return;
+    if (rollRaf) { cancelAnimationFrame(rollRaf); rollRaf = 0; }
+    var reduce = false;
+    try { reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) {}
+    if (reduce || Math.abs(to - from) < 2) { node.textContent = to.toLocaleString(); return; }
+
+    var t0 = 0, DUR = 420, done = false;
+    function land() { if (done) return; done = true; rollRaf = 0; node.textContent = to.toLocaleString(); }
+    function step(now) {
+      if (!t0) t0 = now;
+      var p = Math.min(1, (now - t0) / DUR);
+      var e = 1 - Math.pow(1 - p, 3);
+      node.textContent = Math.round(from + (to - from) * e).toLocaleString();
+      if (p < 1) rollRaf = requestAnimationFrame(step); else land();
+    }
+    rollRaf = requestAnimationFrame(step);
+    setTimeout(land, DUR + 200);
+  }
+
+  function pulse(node) {
+    if (!node) return;
+    node.classList.remove('bump');
+    void node.offsetWidth;          // restart the animation on a repeat
+    node.classList.add('bump');
+  }
+
   function refresh() {
     if (!G || !G.stats) return;
     el['run-floor'].textContent = G.floor + (G.floor % 5 === 0 ? ' · BOSS' : '');
     el['run-seed'].textContent = G.seed;
-    el['run-gold'].textContent = G.gold;
+    /* The score is the number the whole game is about, so it rolls rather
+       than teleporting — and the gold flashes when it moves, because a payout
+       you did not notice may as well not have happened. */
+    var gold = G.gold;
+    if (gold !== lastGold) {
+      el['run-gold'].textContent = gold;
+      if (gold > lastGold) pulse(el['run-gold']);
+      lastGold = gold;
+    }
     el['run-target'].textContent = G.target.toLocaleString();
-    el['run-score'].textContent = Math.round(G.score).toLocaleString();
+
+    var score = Math.round(G.score);
+    if (score !== lastScore) {
+      rollTo(el['run-score'], lastScore, score);
+      lastScore = score;
+    }
 
     var pct = G.target ? Math.min(1, G.score / G.target) : 0;
     el['score-fill'].style.width = (pct * 100).toFixed(1) + '%';
@@ -118,6 +161,7 @@
   }
 
   function onFloorStart() {
+    lastScore = Math.round(G.score);
     refresh();
     var mod = G.modifier;
     showToast('FLOOR ' + G.floor + (mod ? ' — ' + mod.name : ''), mod && mod.boss);

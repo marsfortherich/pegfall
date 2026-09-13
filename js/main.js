@@ -61,7 +61,14 @@
   function start() {
     // Shared account + leaderboard layer. Checks the auth state up front so
     // the HUD knows who is playing before the first ball drops.
-    if (window.Arcade) window.Arcade.init({ gameId: 'pegfall' });
+    if (window.Arcade) {
+      window.Arcade.init({ gameId: 'pegfall' });
+      // The shared chrome has no audio engine of its own and should not grow
+      // one; it borrows whichever game it is sitting in.
+      window.Arcade.ui.setSound({
+        ui: PK.Sfx.ui, success: PK.Sfx.buy, deny: PK.Sfx.deny, achievement: PK.Sfx.cleared
+      });
+    }
 
     // Browsers refuse to start an AudioContext before a gesture, and they
     // suspend it again whenever the tab loses focus, so this is not `once`.

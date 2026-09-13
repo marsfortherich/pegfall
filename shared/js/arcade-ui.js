@@ -53,6 +53,99 @@
     return '#' + rank;
   }
 
+  /* ----------------------------------------------------------------- juice
+
+     Decoration, all of it — which is exactly why every piece degrades to the
+     plain result. Chrome animation honours the OS reduced-motion preference
+     (unlike a game's own animation, which can be load-bearing), and every
+     count-up has a timer backstop so a throttled tab still lands on the real
+     number instead of freezing mid-roll. */
+
+  function motionOK() {
+    try { return !global.matchMedia('(prefers-reduced-motion: reduce)').matches; }
+    catch (e) { return true; }
+  }
+
+  /**
+   * Sound for the shared chrome.
+   *
+   * The arcade layer has no audio engine of its own and should not grow a
+   * fourth one, so each game lends its own: Arcade.ui.setSound({ ui, success,
+   * deny, achievement }). Unset hooks are simply silent.
+   */
+  var sound = {};
+  function setSound(impl) {
+    Object.keys(impl || {}).forEach(function (k) { sound[k] = impl[k]; });
+  }
+  function play(name) {
+    var fn = sound[name];
+    if (typeof fn !== 'function') return;
+    try { fn(); } catch (e) { /* a bad hook must never break the UI */ }
+  }
+
+  /** Roll a number up to its new value. Always ends on `to`. */
+  function countUp(node, from, to, ms) {
+    ms = ms || 600;
+    if (!node) return;
+    if (!motionOK() || from === to || !global.requestAnimationFrame) {
+      node.textContent = fmt(to);
+      return;
+    }
+    var t0 = 0;
+    var done = false;
+    function land() { if (done) return; done = true; node.textContent = fmt(to); }
+    function step(now) {
+      if (!t0) t0 = now;
+      var p = Math.min(1, (now - t0) / ms);
+      var eased = 1 - Math.pow(1 - p, 3);
+      node.textContent = fmt(Math.round(from + (to - from) * eased));
+      if (p < 1 && !done) global.requestAnimationFrame(step);
+      else land();
+    }
+    global.requestAnimationFrame(step);
+    // A backgrounded tab stops firing frames; the number still has to arrive.
+    global.setTimeout(land, ms + 200);
+  }
+
+  /** Deal a list in, one row at a time. */
+  function stagger(host, rows) {
+    rows.forEach(function (r, i) {
+      host.appendChild(r);
+      if (!motionOK()) return;
+      r.classList.add('ac-in');
+      r.style.animationDelay = Math.min(i * 40, 240) + 'ms';
+    });
+  }
+
+  /**
+   * Placeholder rows while a board loads.
+   *
+   * Shaped like the real thing rather than a spinner in the middle of nowhere,
+   * so the panel does not jump when the data lands.
+   */
+  function skeleton(host, count) {
+    var wrap = el('div', 'ac-lb');
+    for (var i = 0; i < (count || 5); i++) {
+      var row = el('div', 'ac-skel');
+      row.style.animationDelay = (i * 90) + 'ms';
+      wrap.appendChild(row);
+    }
+    host.appendChild(wrap);
+  }
+
+  /** A short highlight on an element that just changed. */
+  function flash(node, kind) {
+    if (!node || !motionOK()) return;
+    var cls = 'ac-flash' + (kind ? ' ac-flash--' + kind : '');
+    node.classList.remove('ac-flash', 'ac-flash--good', 'ac-flash--gold');
+    // Reading offsetWidth restarts the animation when it fires twice quickly.
+    void node.offsetWidth;
+    node.className = node.className + ' ' + cls;
+    global.setTimeout(function () {
+      node.classList.remove('ac-flash', 'ac-flash--good', 'ac-flash--gold');
+    }, 700);
+  }
+
   /* --------------------------------------------------------------- toasts */
 
   function toastHost() {
@@ -78,9 +171,21 @@
 
   var openModalEl = null;
 
-  function closeModal() {
+  function removeModalNow() {
     if (openModalEl && openModalEl.parentNode) openModalEl.parentNode.removeChild(openModalEl);
     openModalEl = null;
+  }
+
+  /** Dismiss with a fade. Replacing one modal with another skips it. */
+  function closeModal() {
+    if (!openModalEl) return;
+    if (!motionOK()) { removeModalNow(); return; }
+    var going = openModalEl;
+    openModalEl = null;
+    going.classList.add('is-closing');
+    global.setTimeout(function () {
+      if (going.parentNode) going.parentNode.removeChild(going);
+    }, 180);
   }
 
   /**
@@ -88,7 +193,8 @@
    * The api handed to the builders is { close, setBody, box }.
    */
   function modal(opts) {
-    closeModal();
+    removeModalNow();
+    play('ui');
     var wrap = el('div', 'ac-modal ac-root');
     var box = el('div', 'ac-modal__box' + (opts.wide ? ' ac-modal__box--wide' : ''));
 
@@ -304,7 +410,7 @@
     if (!data.rows.length) {
       list.appendChild(emptyNote('Nothing on this board yet. Finish a run and it is yours.'));
     }
-    data.rows.forEach(function (r) { list.appendChild(row(r, game)); });
+    stagger(list, data.rows.map(function (r) { return row(r, game); }));
     host.appendChild(list);
 
     // The player's own standing, when they are not already in the top rows.
@@ -348,7 +454,10 @@
     if (bits.length) nameCell.appendChild(el('span', 'ac-lb__meta', bits.join(' · ')));
     n.appendChild(nameCell);
 
-    n.appendChild(el('span', 'ac-lb__score', fmt(r.score)));
+    var score = el('span', 'ac-lb__score', fmt(r.score));
+    n.appendChild(score);
+    // Your own row is the one worth drawing the eye to.
+    if (r.you) countUp(score, 0, r.score, 700);
     return n;
   }
 
@@ -428,7 +537,7 @@
         function load() {
           var token = ++loadToken;
           host.innerHTML = '';
-          host.appendChild(el('div', 'ac-spinner'));
+          skeleton(host, Arcade.options.topN);
           var forGame = game, forMetric = metric;
           Arcade.scores.board(id, null, metric.id).then(function (data) {
             if (token !== loadToken) return;   // a later switch already won
@@ -502,7 +611,7 @@
         standings.appendChild(el('div', 'ac-cap', 'Your standing'));
         var list = el('div', 'ac-lb');
         list.style.marginTop = '8px';
-        list.appendChild(el('div', 'ac-spinner'));
+        skeleton(list, Arcade.games.length);
         standings.appendChild(list);
         body.appendChild(standings);
 
@@ -545,6 +654,7 @@
     body.appendChild(el('div', 'ac-achv__name', def.label));
     t.appendChild(body);
     toastHost().appendChild(t);
+    play('achievement');
     global.setTimeout(function () {
       t.classList.add('is-out');
       global.setTimeout(function () { if (t.parentNode) t.parentNode.removeChild(t); }, 260);
@@ -622,11 +732,13 @@
     var bal = Arcade.progress.balance(gameId);
     var purse = el('div', 'ac-purse');
     purse.appendChild(el('span', 'ac-purse__icon', prog.currency.icon));
-    purse.appendChild(el('b', 'ac-purse__amount', fmt(bal)));
+    var purseAmount = el('b', 'ac-purse__amount', fmt(bal));
+    purse.appendChild(purseAmount);
     purse.appendChild(el('span', 'ac-purse__label', prog.currency.label + ' — earned by playing'));
     host.appendChild(purse);
 
     var list = el('div', 'ac-unlocks');
+    var rows = [];
     prog.unlocks.forEach(function (u) {
       var owned = Arcade.progress.isUnlocked(gameId, u.id);
       var afford = bal >= u.cost;
@@ -642,15 +754,28 @@
       } else {
         var b = btn(prog.currency.icon + ' ' + u.cost,
           'ac-btn--sm' + (afford ? ' ac-btn--gold' : ''), function () {
+            var had = Arcade.progress.balance(gameId);
             var res = Arcade.progress.buy(gameId, u.id);
-            if (res.ok) { toast('Unlocked ' + u.label, 'gold'); redraw(); }
-            else { toast(res.reason, 'bad'); }
+            if (!res.ok) { play('deny'); toast(res.reason, 'bad'); return; }
+
+            // Buying is the payoff of the whole progression system, so it gets
+            // a moment: the purse counts down, the row turns over, it sounds.
+            play('success');
+            row.classList.add('is-owned', 'ac-bought');
+            row.replaceChild(el('span', 'ac-unlock__owned', 'Unlocked'), b);
+            countUp(purseAmount, had, Arcade.progress.balance(gameId), 500);
+            flash(purseAmount, 'gold');
+            toast('Unlocked ' + u.label, 'gold');
+            // Redraw once the flourish has played, so the other rows catch up
+            // on affordability without snatching this one away mid-animation.
+            global.setTimeout(redraw, 820);
           });
         b.disabled = !afford;
         row.appendChild(b);
       }
-      list.appendChild(row);
+      rows.push(row);
     });
+    stagger(list, rows);
     host.appendChild(list);
 
     var note = el('div', 'ac-note');
@@ -669,9 +794,12 @@
 
     var bar = el('div', 'ac-achvbar');
     var fill = el('div', 'ac-achvbar__fill');
-    fill.style.width = p.pct + '%';
+    fill.style.width = motionOK() ? '0%' : p.pct + '%';
     bar.appendChild(fill);
     host.appendChild(bar);
+    if (motionOK()) {
+      global.setTimeout(function () { fill.style.width = p.pct + '%'; }, 60);
+    }
 
     [{ id: gameId, label: Arcade.gameById(gameId).name },
      { id: null, label: 'Arcade-wide' }].forEach(function (grp) {
@@ -928,6 +1056,10 @@
 
   Arcade.ui = {
     mountBar: mountBar,
+    setSound: setSound,
+    countUp: countUp,
+    flash: flash,
+    motionOK: motionOK,
     showProgress: showProgress,
     achievementToast: achievementToast,
     refreshBar: refreshBar,
