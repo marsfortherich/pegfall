@@ -256,6 +256,7 @@
       if (e.key === 'Enter') $('btn-start').click();
     });
     arcadeRow(el.overlay.querySelector('.menu'));
+    if (window.Arcade && window.Arcade.dealer) window.Arcade.dealer.greet('pegfall');
   }
 
   /** Sound on/off and a three-step volume, persisted in PK.Settings. */
@@ -374,6 +375,9 @@
     $('btn-same').addEventListener('click', function () { hideOverlay(); PK.Game.newRun(G.seed); });
     $('btn-menu').addEventListener('click', function () { showMenu(); });
     arcadeRow(el.overlay.querySelector('.over'));
+    if (window.Arcade && window.Arcade.dealer) {
+      window.Arcade.dealer.reactToRun({ floor: G.floor, score: G.stats.runTotal });
+    }
   }
 
   PK.UI = {

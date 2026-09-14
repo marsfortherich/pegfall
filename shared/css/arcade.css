@@ -854,3 +854,92 @@ html[data-arcade-game="hub"] {
   }
   .ac-achvbar__fill { transition: none; }
 }
+
+/* ============================================================================
+   The Dealer
+   --------------------------------------------------------------------------
+   Bottom-left, above everything, and never in the way: he is pointer-events
+   none except for his own box, so a line arriving while you are mid-click
+   cannot steal it.
+   ========================================================================= */
+
+.ac-dealer {
+  position: fixed;
+  left: 14px;
+  bottom: 14px;
+  z-index: var(--ac-z-toast);
+  display: flex;
+  align-items: flex-end;
+  gap: var(--ac-s2);
+  max-width: min(420px, calc(100vw - 28px));
+  font-family: var(--ac-font-ui);
+  cursor: pointer;
+  opacity: 0;
+  transform: translateY(10px);
+  pointer-events: none;
+  transition: opacity var(--ac-slow), transform var(--ac-slow);
+}
+.ac-dealer.is-in { opacity: 1; transform: none; pointer-events: auto; }
+
+.ac-dealer__face { flex: none; line-height: 0; filter: drop-shadow(0 3px 0 rgba(0, 0, 0, .45)); }
+
+.ac-dealer__bubble {
+  position: relative;
+  background: var(--ac-surface-1);
+  border: 1px solid var(--ac-line);
+  border-left: 3px solid var(--ac-gold);
+  border-radius: var(--ac-r-md);
+  box-shadow: var(--ac-lift-2);
+  padding: var(--ac-s2) var(--ac-s3) var(--ac-s3);
+  min-height: 46px;
+}
+/* The tail, pointing back at the face. */
+.ac-dealer__bubble::before {
+  content: "";
+  position: absolute;
+  left: -7px;
+  bottom: 14px;
+  width: 8px;
+  height: 8px;
+  background: var(--ac-gold);
+  clip-path: polygon(100% 0, 100% 100%, 0 50%);
+}
+.ac-dealer__name {
+  font-size: var(--ac-fs-micro);
+  letter-spacing: var(--ac-track-caps);
+  text-transform: uppercase;
+  color: var(--ac-gold);
+  margin-bottom: 3px;
+}
+.ac-dealer__text {
+  font-size: var(--ac-fs-sm);
+  line-height: 1.5;
+  color: var(--ac-ink);
+  /* Reserve the caret's width so the last character does not shuffle. */
+  min-height: 1.5em;
+}
+/* A caret only while he is actually speaking. */
+.ac-dealer.is-talking .ac-dealer__text::after {
+  content: "▌";
+  color: var(--ac-gold);
+  animation: ac-caret .5s steps(1) infinite;
+}
+@keyframes ac-caret { 50% { opacity: 0; } }
+
+/* The mouth moves only while talking; the eyes blink on their own schedule so
+   he does not look switched off between lines. */
+.ac-dealer.is-talking .ac-dealer__mouth { animation: ac-mouth .16s steps(2) infinite; }
+@keyframes ac-mouth { 50% { transform: scaleY(3.2); transform-origin: 31px center; } }
+.ac-dealer__eyes { animation: ac-blink 5.2s infinite; transform-origin: center 26px; }
+@keyframes ac-blink { 0%, 95%, 100% { transform: scaleY(1); } 97.5% { transform: scaleY(.1); } }
+
+@media (max-width: 720px) {
+  .ac-dealer { left: 8px; bottom: 8px; max-width: calc(100vw - 16px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ac-dealer { transition: none; }
+  .ac-dealer.is-talking .ac-dealer__text::after,
+  .ac-dealer.is-talking .ac-dealer__mouth,
+  .ac-dealer__eyes { animation: none; }
+}

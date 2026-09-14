@@ -655,6 +655,7 @@
     t.appendChild(body);
     toastHost().appendChild(t);
     play('achievement');
+    if (Arcade.dealer) Arcade.dealer.says('achievement');
     global.setTimeout(function () {
       t.classList.add('is-out');
       global.setTimeout(function () { if (t.parentNode) t.parentNode.removeChild(t); }, 260);
@@ -720,6 +721,7 @@
           else drawClears(host, id);
         }
         draw();
+        if (Arcade.dealer) Arcade.dealer.says('progress');
       },
       foot: function (foot, api) { foot.appendChild(btn('Close', '', api.close)); }
     });
@@ -766,6 +768,7 @@
             countUp(purseAmount, had, Arcade.progress.balance(gameId), 500);
             flash(purseAmount, 'gold');
             toast('Unlocked ' + u.label, 'gold');
+            if (Arcade.dealer) Arcade.dealer.says('bought');
             // Redraw once the flourish has played, so the other rows catch up
             // on affordability without snatching this one away mid-animation.
             global.setTimeout(redraw, 820);
