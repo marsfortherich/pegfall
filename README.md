@@ -51,6 +51,11 @@ Clear the target and you reach the shop. Miss it and the run is over.
 | Arrow keys | nudge the aim (hold Shift for fine) |
 | Enter | bank a cleared floor early (unused balls pay gold) |
 
+**Bag Trim** removes a Standard ball when you still have one — thinning the
+filler is the point, so it will not eat your Void or Lucky balls just because
+they are worth fewer points on paper. Hands cap at 24 balls, and the shop stops
+offering Bigger Hands once you are there.
+
 Once a floor's target falls you do **not** have to drop the rest of your hand.
 The hand bar turns green and every unused ball converts to gold when you bank.
 Keep dropping only if you want the overspill bonus, which scales the shop payout

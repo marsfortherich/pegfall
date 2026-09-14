@@ -76,6 +76,13 @@
     setTimeout(land, DUR + 200);
   }
 
+  /** Put a number on screen immediately, cancelling any roll in flight. */
+  function setScoreNow(v) {
+    lastScore = v;
+    if (rollRaf) { cancelAnimationFrame(rollRaf); rollRaf = 0; }
+    if (el['run-score']) el['run-score'].textContent = v.toLocaleString();
+  }
+
   function pulse(node) {
     if (!node) return;
     node.classList.remove('bump');
@@ -98,10 +105,18 @@
     }
     el['run-target'].textContent = G.target.toLocaleString();
 
+    /* Two separate questions: has the score moved (roll it), and does the
+       display actually agree with the score (paint it). Only asking the first
+       left a cleared floor showing the previous floor's total until the next
+       ball landed, because a reset sets the tracker and the score to the same
+       number and the roll was skipped. */
     var score = Math.round(G.score);
+    var want = score.toLocaleString();
     if (score !== lastScore) {
       rollTo(el['run-score'], lastScore, score);
       lastScore = score;
+    } else if (!rollRaf && el['run-score'].textContent !== want) {
+      el['run-score'].textContent = want;
     }
 
     var pct = G.target ? Math.min(1, G.score / G.target) : 0;
@@ -161,7 +176,10 @@
   }
 
   function onFloorStart() {
-    lastScore = Math.round(G.score);
+    // A new floor starts at zero, or at whatever Overflow carried over. Snap
+    // to it rather than rolling down from the last floor's total, which would
+    // read as the score draining away.
+    setScoreNow(Math.round(G.score));
     refresh();
     var mod = G.modifier;
     showToast('FLOOR ' + G.floor + (mod ? ' — ' + mod.name : ''), mod && mod.boss);

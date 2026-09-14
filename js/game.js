@@ -5,6 +5,12 @@
   var BASE_TARGET = 240;
   var TARGET_GROWTH = 1.28;
   var BASE_HAND = 6;
+  /* The ceiling on balls drawn per floor. It exists so a run cannot turn into
+     an unbounded grind, not to cut progression short — at 14 a player who kept
+     buying Bigger Hands was paying 11 gold for nothing, which is the worst way
+     for a cap to announce itself. The shop now withholds the offer at the cap
+     as well, so the gold is never silently wasted. */
+  var MAX_HAND = 24;
   var DROP_Y = 76;
 
   var G = {
@@ -281,7 +287,7 @@
 
     // Hand
     var size = reduceHook('handSize', G.handSizeBase);
-    size = Math.max(1, Math.min(size, 14));
+    size = Math.max(1, Math.min(size, MAX_HAND));
     var shuffled = G.rng.shuffle(G.bag);
     G.hand = shuffled.slice(0, Math.min(size, shuffled.length));
     while (G.hand.length < size) G.hand.push(G.rng.pick(G.bag));   // small bags still fill the hand
@@ -477,7 +483,7 @@
      kind + id + cost, and its display data is looked up again on load. */
   var SERVICES = {
     hand: { cost: 11, data: { name: 'Bigger Hands', rarity: 'rare', desc: 'Permanently draw +1 ball every floor.' } },
-    trim: { cost: 4, data: { name: 'Bag Trim', rarity: 'common', desc: 'Remove your lowest-value ball from the bag.' } },
+    trim: { cost: 4, data: { name: 'Bag Trim', rarity: 'common', desc: 'Remove a Standard ball from the bag, or your lowest-value ball if none are left.' } },
     gild: { cost: 7, data: { name: 'Gilding', rarity: 'uncommon', desc: 'Upgrade one Standard ball into a random unlocked type.' } }
   };
 
@@ -497,6 +503,10 @@
       if (b && id !== 'standard') offers.push({ kind: 'ball', id: id, data: b, cost: b.cost });
     });
     Object.keys(SERVICES).forEach(function (id) {
+      // Never sell something that cannot do anything.
+      if (id === 'hand' && G.handSizeBase >= MAX_HAND) return;
+      if (id === 'trim' && G.bag.length <= 3) return;
+      if (id === 'gild' && G.bag.indexOf('standard') === -1) return;
       var sv = SERVICES[id];
       offers.push({ kind: 'service', id: id, cost: sv.cost, data: sv.data });
     });
@@ -537,12 +547,19 @@
     } else if (o.id === 'hand') {
       G.handSizeBase++;
     } else if (o.id === 'trim') {
-      var worstIdx = -1, worstVal = Infinity;
-      G.bag.forEach(function (id, i) {
-        var v = (PK.BALLS[id] || PK.BALLS.standard).value;
-        if (v < worstVal) { worstVal = v; worstIdx = i; }
-      });
-      if (worstIdx >= 0 && G.bag.length > 3) G.bag.splice(worstIdx, 1);
+      /* Thinning the bag is about removing filler so the interesting balls come
+         up more often. Ranking purely by value did the opposite: Void is worth
+         0 and Lucky 6, so the trim ate them before it would touch a Standard
+         worth 10. A Standard goes first whenever there is one. */
+      var cutIdx = G.bag.indexOf('standard');
+      if (cutIdx === -1) {
+        var worstVal = Infinity;
+        G.bag.forEach(function (id, i) {
+          var v = (PK.BALLS[id] || PK.BALLS.standard).value;
+          if (v < worstVal) { worstVal = v; cutIdx = i; }
+        });
+      }
+      if (cutIdx >= 0 && G.bag.length > 3) G.bag.splice(cutIdx, 1);
     } else if (o.id === 'gild') {
       var i = G.bag.indexOf('standard');
       var pool = PK.Save.unlockedBalls(G.meta).filter(function (b) { return b !== 'standard'; });
@@ -628,7 +645,12 @@
     hasSave: hasSave,
     resumeRun: resumeRun,
     persist: persist,
-    handSize: function () { return reduceHook('handSize', G.handSizeBase); },
+    /* Capped exactly as startFloor caps it, so the shop footer cannot promise
+       a hand the game will not deal. */
+    handSize: function () {
+      return Math.max(1, Math.min(reduceHook('handSize', G.handSizeBase), MAX_HAND));
+    },
+    MAX_HAND: MAX_HAND,
     DROP_Y: DROP_Y
   };
 })(window.PK = window.PK || {});
