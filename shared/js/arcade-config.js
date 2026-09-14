@@ -197,6 +197,9 @@
   Arcade.options = {
     topN: 5,               // how many rows the leaderboard shows
     rankScanLimit: 200,    // fallback rank scan depth when count() is absent
+    /* Above this, numbers render as 8.57e9 rather than 8,574,634,687, so a
+       score can never outgrow the box it sits in. */
+    compactAbove: 1e9,
     minNameLength: 3,
     maxNameLength: 20,
     /* How far above the arcade root each game sits, so the game switcher can

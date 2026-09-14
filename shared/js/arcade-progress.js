@@ -35,7 +35,7 @@
   }
 
   function blankGame() {
-    return { runs: 0, wins: 0, best: 0, currency: {}, unlocked: {}, clears: {} };
+    return { runs: 0, wins: 0, best: 0, currency: {}, unlocked: {}, off: {}, clears: {} };
   }
 
   var data = null;
@@ -68,6 +68,7 @@
     var g = s.games[gameId];
     if (!g.currency) g.currency = {};
     if (!g.unlocked) g.unlocked = {};
+    if (!g.off) g.off = {};
     if (!g.clears) g.clears = {};
     return g;
   }
@@ -109,8 +110,36 @@
     return null;
   }
 
+  /** Owned — bought and paid for, whether or not it is currently applied. */
   function isUnlocked(gameId, unlockId) {
     return !!game(gameId).unlocked[unlockId];
+  }
+
+  /**
+   * Owned *and* switched on.
+   *
+   * Progression is a one-way ratchet on difficulty otherwise: once you own the
+   * sixth die there is no way back to the game without it. Owning and applying
+   * are therefore separate, so a player can put an advantage down without
+   * losing what they paid for it.
+   */
+  function isActive(gameId, unlockId) {
+    var g = game(gameId);
+    return !!g.unlocked[unlockId] && !g.off[unlockId];
+  }
+
+  /** Switch an owned unlock on or off. Returns the new state. */
+  function setActive(gameId, unlockId, on) {
+    var g = game(gameId);
+    if (!g.unlocked[unlockId]) return false;
+    if (on) delete g.off[unlockId];
+    else g.off[unlockId] = true;
+    save();
+    return isActive(gameId, unlockId);
+  }
+
+  function toggle(gameId, unlockId) {
+    return setActive(gameId, unlockId, !isActive(gameId, unlockId));
   }
 
   /** Buy an unlock. Returns { ok, reason } — never throws at a caller. */
@@ -138,7 +167,8 @@
     if (!p) return out;
     var g = game(gameId);
     p.unlocks.forEach(function (u) {
-      if (!g.unlocked[u.id] || !u.effect) return;
+      // Switched-off unlocks contribute nothing, which is the whole point.
+      if (!isActive(gameId, u.id) || !u.effect) return;
       var bits = String(u.effect).split(':');
       var key = bits[0];
       var val = bits.length > 1 ? bits[1] : '1';
@@ -306,7 +336,8 @@
     },
     forGame: game,
     balance: balance, grant: grant, currencyId: currencyId,
-    buy: buy, isUnlocked: isUnlocked, unlockDef: unlockDef,
+    buy: buy, isUnlocked: isUnlocked, isActive: isActive,
+    setActive: setActive, toggle: toggle, unlockDef: unlockDef,
     effects: effects, bonus: bonus, granted: granted,
     award: award, hasAchievement: hasAchievement,
     achievementsFor: achievementsFor, achievementProgress: achievementProgress,

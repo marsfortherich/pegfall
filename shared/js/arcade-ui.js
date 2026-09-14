@@ -40,10 +40,21 @@
     return s.toUpperCase();
   }
 
+  /**
+   * A number that fits.
+   *
+   * Grouped digits stay readable up to a point, and these are score-attack
+   * games where a good No Limit spin genuinely reaches ten figures —
+   * "8,574,634,687" is thirteen characters and overflows a leaderboard cell
+   * and a sidebar box alike. Past the threshold it becomes "8.57e9": six
+   * characters whatever the magnitude.
+   */
   function fmt(n) {
-    if (n === null || n === undefined) return '—';
+    if (n === null || n === undefined || n !== n) return '—';
     if (!isFinite(n)) return '∞';
-    if (Math.abs(n) >= 1e15) return Number(n).toExponential(2).replace('e+', 'e');
+    var a = Math.abs(n);
+    var limit = (Arcade.options && Arcade.options.compactAbove) || 1e9;
+    if (a >= limit) return Number(n).toExponential(2).replace('e+', 'e');
     return Math.round(n).toLocaleString('en-US');
   }
 
@@ -752,7 +763,27 @@
       row.appendChild(text);
 
       if (owned) {
-        row.appendChild(el('span', 'ac-unlock__owned', 'Unlocked'));
+        /* Owned is not the same as applied. Without this, progression is a
+           one-way ratchet on difficulty: buy the sixth die and there is no
+           route back to the game without it. */
+        var on = Arcade.progress.isActive(gameId, u.id);
+        var sw = el('button', 'ac-switch-btn' + (on ? ' is-on' : ''));
+        sw.type = 'button';
+        sw.setAttribute('role', 'switch');
+        sw.setAttribute('aria-checked', on ? 'true' : 'false');
+        sw.title = on ? 'Applied to every run — click to set it aside'
+                      : 'Owned but not applied — click to switch it back on';
+        sw.appendChild(el('span', 'ac-switch-btn__track'));
+        sw.appendChild(el('span', 'ac-switch-btn__label', on ? 'On' : 'Off'));
+        sw.addEventListener('click', function (e) {
+          e.stopPropagation();
+          var nowOn = Arcade.progress.toggle(gameId, u.id);
+          play(nowOn ? 'success' : 'ui');
+          toast(u.label + (nowOn ? ' applied' : ' set aside'), nowOn ? 'good' : null);
+          redraw();
+        });
+        row.classList.toggle('is-off', !on);
+        row.appendChild(sw);
       } else {
         var b = btn(prog.currency.icon + ' ' + u.cost,
           'ac-btn--sm' + (afford ? ' ac-btn--gold' : ''), function () {

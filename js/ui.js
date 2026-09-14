@@ -202,6 +202,13 @@
   }
   function hideOverlay() { el.overlay.classList.add('hidden'); el.overlay.innerHTML = ''; }
 
+  /** Drop the shared arcade buttons into one of this game's own overlays. */
+  function arcadeRow(host) {
+    if (host && window.Arcade && window.Arcade.ui) {
+      host.appendChild(window.Arcade.ui.inlineActions({ gameId: 'pegfall' }));
+    }
+  }
+
   function showMenu() {
     var meta = PK.Save.load();
     var next = PK.Save.nextUnlock(meta);
@@ -230,12 +237,13 @@
       '</p>' +
       '<p class="muted small">Click the board to aim and drop · <b>Space</b> drops at the last spot</p>' +
       '<div class="optrow">' +
-      '<button id="btn-sfx"></button>' +
-      '<button id="btn-vol"></button>' +
+      '<button id="btn-settings">SETTINGS</button>' +
+      '<button id="btn-help">HOW TO PLAY</button>' +
       '</div>' +
       '</div>', false);
 
-    wireSound();
+    $('btn-settings').addEventListener('click', function () { PK.Sfx.ui(); showSettings(true); });
+    $('btn-help').addEventListener('click', function () { PK.Sfx.ui(); showHelp(true); });
 
     if (saved) {
       $('btn-continue').addEventListener('click', function () {
@@ -259,43 +267,83 @@
     if (window.Arcade && window.Arcade.dealer) window.Arcade.dealer.greet('pegfall');
   }
 
-  /** Sound on/off and a three-step volume, persisted in PK.Settings. */
-  function wireSound() {
-    var sfxBtn = $('btn-sfx'), volBtn = $('btn-vol');
-    if (!sfxBtn || !volBtn) return;
+  /* ---------------------------------------------------- settings and help
+
+     Both reachable straight from the title, matching One More Roll. The sound
+     controls used to sit loose on the menu card; they live in Settings now, so
+     the title screen is a title screen and not a control panel. */
+
+  function showSettings(fromMenu) {
     var STEPS = [0.3, 0.6, 1];
 
-    function paint() {
+    function body() {
       var on = PK.Settings.sfx;
-      sfxBtn.textContent = on ? 'SOUND ON' : 'SOUND OFF';
-      sfxBtn.className = on ? '' : 'off';
       var idx = STEPS.indexOf(PK.Settings.volume);
-      volBtn.textContent = 'VOL ' + (idx < 0 ? 2 : idx + 1) + '/3';
-      volBtn.disabled = !on;
-      volBtn.className = on ? '' : 'off';
+      if (idx < 0) idx = 1;
+      return '<div class="card menu">' +
+        '<h2 class="ovh">SETTINGS</h2>' +
+        '<div class="setrows">' +
+        '<div class="setrow"><span>Sound</span>' +
+        '<button id="set-sfx" class="' + (on ? 'on' : 'off') + '">' + (on ? 'ON' : 'OFF') + '</button></div>' +
+        '<div class="setrow"><span>Volume</span>' +
+        '<button id="set-vol"' + (on ? '' : ' disabled') + '>' + (idx + 1) + ' / 3</button></div>' +
+        '</div>' +
+        '<p class="muted small">Sound is synthesised as you play — there are no audio files.</p>' +
+        '<div class="shopfoot"><button id="set-back" class="big">BACK</button></div>' +
+        '</div>';
     }
 
-    sfxBtn.addEventListener('click', function () {
-      PK.Sfx.resume();
-      PK.setSetting('sfx', !PK.Settings.sfx);
-      paint();
-      if (PK.Settings.sfx) PK.Sfx.coin();
-    });
-    volBtn.addEventListener('click', function () {
-      PK.Sfx.resume();
-      var i = STEPS.indexOf(PK.Settings.volume);
-      PK.setSetting('volume', STEPS[(i + 1) % STEPS.length] || STEPS[1]);
-      paint();
-      PK.Sfx.coin();
-    });
-    paint();
+    function draw() {
+      showOverlay(body(), false);
+      $('set-sfx').addEventListener('click', function () {
+        PK.Sfx.resume();
+        PK.setSetting('sfx', !PK.Settings.sfx);
+        if (PK.Settings.sfx) PK.Sfx.coin();
+        draw();
+      });
+      $('set-vol').addEventListener('click', function () {
+        PK.Sfx.resume();
+        var i = STEPS.indexOf(PK.Settings.volume);
+        PK.setSetting('volume', STEPS[(i + 1) % STEPS.length] || STEPS[1]);
+        PK.Sfx.coin();
+        draw();
+      });
+      $('set-back').addEventListener('click', function () {
+        PK.Sfx.ui();
+        if (fromMenu) showMenu(); else hideOverlay();
+      });
+    }
+    draw();
   }
 
-  /** Drop the shared arcade buttons into one of this game's own overlays. */
-  function arcadeRow(host) {
-    if (host && window.Arcade && window.Arcade.ui) {
-      host.appendChild(window.Arcade.ui.inlineActions({ gameId: 'pegfall' }));
-    }
+  function showHelp(fromMenu) {
+    showOverlay(
+      '<div class="card menu help">' +
+      '<h2 class="ovh">HOW TO PLAY</h2>' +
+      '<div class="helpbody">' +
+      '<p><b>Drop a ball.</b> Click the board to aim; it falls where you point.</p>' +
+      '<p><b>Pegs feed it.</b> A ball starts at its type’s value and grows with every peg it ' +
+      'clips. Gold pegs add a lot, charged pegs add to the slot multiplier, bumpers kick it ' +
+      'sideways, brittle pegs break for a bonus.</p>' +
+      '<p><b>The slot multiplies it.</b> <span class="fx">ball value × slot multiplier = score</span> ' +
+      'The outer slots pay 10×, the centre pays 0.8× — so a fat ball in a poor slot is a waste.</p>' +
+      '<p><b>Clear the target</b> before the hand runs out or the run ends. Beat it and the rest ' +
+      'of your hand becomes gold instead — you never have to drop them.</p>' +
+      '<p><b>Between floors</b> you buy relics and stranger balls. From floor 3 the board starts ' +
+      'fighting back, and every fifth floor is a boss.</p>' +
+      '</div>' +
+      '<div class="helpkeys">' +
+      '<div><b>Click</b> aim and drop</div>' +
+      '<div><b>Space</b> drop at the last spot</div>' +
+      '<div><b>← →</b> nudge the aim</div>' +
+      '<div><b>Enter</b> bank a cleared floor</div>' +
+      '</div>' +
+      '<div class="shopfoot"><button id="help-back" class="big">BACK</button></div>' +
+      '</div>', false);
+    $('help-back').addEventListener('click', function () {
+      PK.Sfx.ui();
+      if (fromMenu) showMenu(); else hideOverlay();
+    });
   }
 
   function offerCard(o, i) {
@@ -387,6 +435,8 @@
     showShop: showShop,
     showGameOver: showGameOver,
     showMenu: showMenu,
+    showSettings: showSettings,
+    showHelp: showHelp,
     showToast: showToast,
     hideOverlay: hideOverlay
   };

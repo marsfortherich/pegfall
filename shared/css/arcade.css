@@ -943,3 +943,55 @@ html[data-arcade-game="hub"] {
   .ac-dealer.is-talking .ac-dealer__mouth,
   .ac-dealer__eyes { animation: none; }
 }
+
+/* An owned unlock you can put down again. */
+.ac-switch-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex: none;
+  background: none;
+  border: 0;
+  padding: 2px;
+  cursor: pointer;
+  font-family: var(--ac-font-ui);
+  font-size: var(--ac-fs-micro);
+  letter-spacing: var(--ac-track-caps);
+  text-transform: uppercase;
+  color: var(--ac-ink-dim);
+}
+.ac-switch-btn__track {
+  width: 32px;
+  height: 18px;
+  border-radius: var(--ac-r-pill);
+  background: var(--ac-surface-0);
+  border: 1px solid var(--ac-line);
+  position: relative;
+  transition: background var(--ac-fast), border-color var(--ac-fast);
+}
+.ac-switch-btn__track::after {
+  content: "";
+  position: absolute;
+  top: 2px; left: 2px;
+  width: 12px; height: 12px;
+  border-radius: 50%;
+  background: var(--ac-ink-dim);
+  transition: transform var(--ac-fast), background var(--ac-fast);
+}
+.ac-switch-btn.is-on { color: var(--ac-good); }
+.ac-switch-btn.is-on .ac-switch-btn__track { background: rgba(63, 169, 107, .25); border-color: var(--ac-good); }
+.ac-switch-btn.is-on .ac-switch-btn__track::after { transform: translateX(14px); background: var(--ac-good); }
+.ac-switch-btn:focus-visible { outline: 2px solid var(--ac-gold); outline-offset: 2px; }
+
+/* "On" and "Off" are different widths, and a row that twitches every time you
+   flip it reads as a glitch rather than a switch. */
+.ac-switch-btn__label { min-width: 22px; text-align: left; }
+
+/* Set aside: still owned, visibly not in play. */
+.ac-unlock.is-off { border-color: var(--ac-line); background: var(--ac-surface-2); }
+.ac-unlock.is-off .ac-unlock__name,
+.ac-unlock.is-off .ac-unlock__desc { opacity: .55; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ac-switch-btn__track, .ac-switch-btn__track::after { transition: none; }
+}
