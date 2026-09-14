@@ -116,6 +116,10 @@
   /* Absolute home of the arcade hub, for subdomain deploys. */
   Arcade.hubUrl = 'https://arcade.marsindustries.dev/';
 
+  /* The community. Set to null and every Discord link disappears on its own,
+     so a fork of this arcade is not left advertising someone else's server. */
+  Arcade.discordUrl = 'https://discord.gg/FhbRW7J3Cf';
+
   /* --------------------------------------------------------------------
      Shared sign-in across the subdomains.
 

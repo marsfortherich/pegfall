@@ -885,6 +885,24 @@
     return Arcade.gameUrl(g);
   }
 
+  /* The Discord mark, drawn rather than loaded — these games ship no image
+     files and a social icon is not going to be the first one. */
+  var DISCORD_MARK =
+    '<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" focusable="false">' +
+    '<path fill="currentColor" d="M20.317 4.37a19.79 19.79 0 0 0-4.885-1.515.074.074 0 0 0-.079.037 13.78 13.78 0 0 0-.608 1.25 18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.058a.082.082 0 0 0 .031.056 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.1 13.1 0 0 1-1.872-.892.077.077 0 0 1-.008-.128c.126-.094.252-.192.372-.291a.074.074 0 0 1 .078-.011c3.928 1.793 8.18 1.793 12.061 0a.074.074 0 0 1 .079.01c.12.099.246.198.373.292a.077.077 0 0 1-.006.128c-.598.349-1.22.645-1.873.891a.077.077 0 0 0-.041.107c.36.698.772 1.363 1.225 1.993a.076.076 0 0 0 .084.029 19.84 19.84 0 0 0 6.002-3.03.077.077 0 0 0 .032-.055c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.029zM8.02 15.331c-1.182 0-2.157-1.086-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.211 0 2.176 1.095 2.157 2.419 0 1.333-.956 2.419-2.157 2.419zm7.975 0c-1.183 0-2.157-1.086-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.175 1.095 2.156 2.419 0 1.333-.946 2.419-2.156 2.419z"/>' +
+    '</svg>';
+
+  /**
+   * The build this page was served as, for bug reports.
+   * Absent on a site that does not stamp one, in which case nothing is shown
+   * rather than a reassuring lie.
+   */
+  function appVersion() {
+    var m = doc.querySelector('meta[name="app-version"]');
+    var v = m && m.getAttribute('content');
+    return v ? String(v).trim() : null;
+  }
+
   function toggleSwitcher() {
     if (switcher) { closeSwitcher(); return; }
     switcher = el('div', 'ac-switch ac-root');
@@ -907,6 +925,32 @@
     hubLabel.appendChild(el('span', 'ac-switch__sub', 'all games, all boards'));
     hub.appendChild(hubLabel);
     switcher.appendChild(hub);
+
+    /* Everything below the rule is about the arcade rather than about where to
+       go next, which is why it is below a rule. */
+    if (Arcade.discordUrl) {
+      switcher.appendChild(el('div', 'ac-switch__sep'));
+      var dc = doc.createElement('a');
+      dc.href = Arcade.discordUrl;
+      dc.target = '_blank';
+      dc.rel = 'noopener noreferrer';
+      var mark = el('span', 'ac-switch__glyph ac-switch__glyph--brand');
+      mark.innerHTML = DISCORD_MARK;
+      dc.appendChild(mark);
+      var dcLabel = el('span', null, 'Discord');
+      dcLabel.appendChild(el('span', 'ac-switch__sub', 'bugs, news and scores'));
+      dc.appendChild(dcLabel);
+      switcher.appendChild(dc);
+    }
+
+    var v = appVersion();
+    if (v) {
+      var foot = el('div', 'ac-switch__foot');
+      var game = currentGameId ? Arcade.gameById(currentGameId).name : 'Arcade hub';
+      foot.appendChild(el('span', null, game + ' ' + v));
+      foot.title = 'Quote this in a bug report';
+      switcher.appendChild(foot);
+    }
 
     doc.body.appendChild(switcher);
     global.setTimeout(function () { doc.addEventListener('mousedown', outside); }, 0);
@@ -949,8 +993,8 @@
 
     var caret = el('button', 'ac-bar__caret', '▾');
     caret.type = 'button';
-    caret.title = 'Switch game';
-    caret.setAttribute('aria-label', 'Switch game');
+    caret.title = 'Arcade menu';
+    caret.setAttribute('aria-label', 'Arcade menu');
     caret.setAttribute('aria-haspopup', 'true');
     caret.addEventListener('click', function (e) { e.stopPropagation(); toggleSwitcher(); });
     brand.appendChild(caret);
@@ -1108,6 +1152,7 @@
     button: btn,
     fmt: fmt,
     rankText: rankText,
+    appVersion: appVersion,
     setGame: function (id) { currentGameId = id; }
   };
 })(typeof window !== 'undefined' ? window : this);

@@ -460,6 +460,27 @@ html[data-arcade-game="hub"] {
   text-transform: uppercase;
 }
 
+/* Below the rule: the arcade itself rather than somewhere to go. */
+.ac-switch__sep {
+  height: 1px;
+  background: var(--ac-line);
+  margin: var(--ac-s2) 8px;
+}
+.ac-switch__glyph--brand { color: var(--ac-ink-dim); }
+.ac-switch a:hover .ac-switch__glyph--brand { color: #5865f2; }
+.ac-switch__glyph--brand svg { display: block; }
+
+/* The build, for quoting into a bug report — so it has to be selectable. */
+.ac-switch__foot {
+  padding: 8px 8px 2px;
+  font-size: var(--ac-fs-micro);
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--ac-ink-dim);
+  user-select: text;
+  cursor: text;
+}
+
 /* ============================================================================
    Modal
    ========================================================================= */
