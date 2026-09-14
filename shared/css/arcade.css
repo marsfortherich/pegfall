@@ -106,19 +106,19 @@ html[data-arcade-game="pegfall"] {
 }
 
 html[data-arcade-game="onemoreroll"] {
-  --ac-surface-0: #0b1410;
-  --ac-surface-1: #1a2129;
-  --ac-surface-2: #232c36;
-  --ac-surface-3: #2e3945;
-  --ac-line: #3d5165;
-  --ac-ink: #f4f1e8;
-  --ac-ink-dim: #9aa6b1;
-  --ac-accent: #0090ff;
-  --ac-accent-deep: #0060b8;
+  --ac-surface-0: #150f0a;
+  --ac-surface-1: #241a13;
+  --ac-surface-2: #30231a;
+  --ac-surface-3: #423125;
+  --ac-line: #4a3527;
+  --ac-ink: #f5ece0;
+  --ac-ink-dim: #a89680;
+  --ac-accent: #2f9e8f;
+  --ac-accent-deep: #1b6a5f;
   --ac-accent-ink: #ffffff;
-  --ac-gold: #f0a92c;
-  --ac-gold-deep: #b57715;
-  --ac-bad: #fe5f55;
+  --ac-gold: #d9a63c;
+  --ac-gold-deep: #96681a;
+  --ac-bad: #d4564b;
   --ac-font-ui: "Segoe UI", system-ui, -apple-system, "Trebuchet MS", sans-serif;
 }
 
