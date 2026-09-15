@@ -36,11 +36,23 @@ SKIP_PREFIXES = ('shared/tools/',)
 
 
 def _sha256_file(path):
-    h = hashlib.sha256()
+    """sha256 of the file with CRLF normalised to LF.
+
+    Hashing raw bytes was wrong and failed in CI the first time this ran.
+    Every repo here declares `* text=auto eol=lf`, so the committed bytes are
+    always LF — but a Windows working tree can still hold CRLF (eleven files
+    across PEGFALL and One More Roll did). bump.py then recorded a digest of
+    the CRLF bytes and CI, which checks out LF, recomputed a different one.
+
+    Normalising makes the digest a property of the content rather than of
+    whichever machine last touched it. It is safe to normalise unconditionally
+    because these games ship no binary assets at all — no image or audio
+    files, by design; all art is CSS or inline SVG and all sound is
+    synthesised. Revisit this the day that stops being true.
+    """
     with open(path, 'rb') as fh:
-        for chunk in iter(lambda: fh.read(65536), b''):
-            h.update(chunk)
-    return h.hexdigest()
+        data = fh.read()
+    return hashlib.sha256(data.replace(b'\r\n', b'\n')).hexdigest()
 
 
 def _skip(rel):
@@ -50,7 +62,8 @@ def _skip(rel):
 def digest(site_dir, roots):
     """A digest of every cache-relevant asset under `roots`, relative to `site_dir`.
 
-    One `<sha256>  <relpath>` line per file, forward slashes, sorted bytewise
+    One `<sha256>  <relpath>` line per file — the hash being of the file with
+    CRLF normalised to LF, see _sha256_file — forward slashes, sorted bytewise
     on the whole line, joined with newlines, one trailing newline; then sha256
     of that text, first 16 hex characters.
     """
