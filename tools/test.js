@@ -1,0 +1,893 @@
+/* ============================================================
+   tools/test.js — PEGFALL: rng, board, physics, persistence, shop
+
+   Run:  node tools/test.js
+
+   What this is for. PEGFALL is the one game in the arcade whose deploy gates
+   on nothing but "the files exist", so these cover the paths where a silent
+   regression would reach a player: a run that cannot be resumed, a shop that
+   sells something it cannot deliver, a ball that never lands, and the meta
+   progression that outlives all of it.
+   ============================================================ */
+'use strict';
+
+const { createGame } = require('./harness');
+
+/* ---------- micro test framework ---------- */
+let passed = 0;
+const failures = [];
+let group = '';
+
+function describe(name, fn) { group = name; fn(); }
+function it(name, fn) {
+  try { fn(); passed++; }
+  catch (e) { failures.push({ group: group, name: name, err: e.message }); }
+}
+function eq(actual, expected, what) {
+  if (actual !== expected) {
+    throw new Error((what ? what + ': ' : '') + 'expected ' + JSON.stringify(expected) +
+      ', got ' + JSON.stringify(actual));
+  }
+}
+function ok(cond, what) { if (!cond) throw new Error(what || 'expected truthy'); }
+function deepEq(a, b, what) { eq(JSON.stringify(a), JSON.stringify(b), what); }
+
+/* ---------- fixtures ---------- */
+function fresh(opts) {
+  const g = createGame(Object.assign({ quiet: true }, opts || {}));
+  return g;
+}
+/** A run parked on floor 1 with a known seed. */
+function run(seed, opts) {
+  const g = fresh(opts);
+  g.PK.Game.newRun(seed || 'TESTSEED');
+  return g;
+}
+
+/* ============================================================
+   RNG — every run is reproducible from its seed, and a resumed
+   run must pick the sequence up rather than start it again.
+   ============================================================ */
+describe('rng', function () {
+  it('is deterministic for a given seed', function () {
+    const g = fresh();
+    const a = new g.PK.Rng('ABC'), b = new g.PK.Rng('ABC');
+    for (let i = 0; i < 200; i++) eq(a.next(), b.next(), 'draw ' + i);
+  });
+
+  it('differs across seeds', function () {
+    const g = fresh();
+    const a = new g.PK.Rng('ABC'), b = new g.PK.Rng('ABD');
+    let same = 0;
+    for (let i = 0; i < 50; i++) if (a.next() === b.next()) same++;
+    ok(same < 5, 'seeds should diverge');
+  });
+
+  it('restore() resumes the stream where it left off', function () {
+    const g = fresh();
+    const a = new g.PK.Rng('XYZ');
+    for (let i = 0; i < 10; i++) a.next();
+    const state = a.state;
+    const expect = [a.next(), a.next(), a.next()];
+    const b = g.PK.Rng.restore(g.PK.hashString('XYZ'), state);
+    deepEq([b.next(), b.next(), b.next()], expect, 'resumed stream');
+  });
+
+  it('restore() ignores a missing or broken state', function () {
+    const g = fresh();
+    const seed = g.PK.hashString('XYZ');
+    eq(g.PK.Rng.restore(seed, undefined).state, seed, 'undefined falls back to the seed');
+    eq(g.PK.Rng.restore(seed, NaN).state, seed, 'NaN falls back to the seed');
+  });
+
+  it('next() stays in [0, 1)', function () {
+    const g = fresh();
+    const r = new g.PK.Rng('R');
+    for (let i = 0; i < 2000; i++) {
+      const v = r.next();
+      ok(v >= 0 && v < 1, 'got ' + v);
+    }
+  });
+
+  it('int() is inclusive at both ends and never fractional', function () {
+    const g = fresh();
+    const r = new g.PK.Rng('R');
+    const seen = {};
+    for (let i = 0; i < 2000; i++) {
+      const v = r.int(1, 6);
+      ok(v >= 1 && v <= 6, 'out of range: ' + v);
+      ok(Number.isInteger(v), 'not an integer: ' + v);
+      seen[v] = true;
+    }
+    eq(Object.keys(seen).length, 6, 'every face should appear');
+  });
+
+  it('shuffle() keeps the same multiset and does not mutate the source', function () {
+    const g = fresh();
+    const r = new g.PK.Rng('S');
+    const src = ['a', 'b', 'c', 'd', 'e', 'a'];
+    const out = r.shuffle(src);
+    deepEq(src, ['a', 'b', 'c', 'd', 'e', 'a'], 'source untouched');
+    deepEq(out.slice().sort(), src.slice().sort(), 'same contents');
+  });
+
+  it('pickWeighted() returns n distinct entries', function () {
+    const g = fresh();
+    const r = new g.PK.Rng('W');
+    const pool = [{ w: 1 }, { w: 5 }, { w: 2 }, { w: 9 }];
+    const out = r.pickWeighted(pool, 3, function (o) { return o.w; });
+    eq(out.length, 3, 'count');
+    eq(new Set(out).size, 3, 'no duplicates');
+  });
+
+  it('pickWeighted() cannot return more than the pool holds', function () {
+    const g = fresh();
+    const r = new g.PK.Rng('W');
+    eq(r.pickWeighted([{ w: 1 }, { w: 1 }], 5, function (o) { return o.w; }).length, 2);
+  });
+
+  it('pickWeighted() stops rather than looping when every weight is zero', function () {
+    const g = fresh();
+    const r = new g.PK.Rng('W');
+    eq(r.pickWeighted([{ w: 0 }, { w: 0 }], 2, function (o) { return o.w; }).length, 0);
+  });
+});
+
+/* ============================================================
+   Board geometry — slotAt() has to answer for every x on the
+   board, including outside the walls, or a ball can land nowhere.
+   ============================================================ */
+describe('board', function () {
+  it('builds a lattice and eleven slots', function () {
+    const g = run('BOARD');
+    const b = g.PK.Game.G.board;
+    ok(b.pegs.length > 50, 'pegs: ' + b.pegs.length);
+    eq(b.slots.length, 11, 'slots');
+    eq(b.width, g.PK.Board.W, 'width');
+  });
+
+  it('layoutSlots() gives every visible slot a position and a width', function () {
+    const g = run('BOARD');
+    const b = g.PK.Game.G.board;
+    b.slots.forEach(function (s) {
+      if (s.hidden) return;
+      ok(typeof s.x === 'number' && isFinite(s.x), 'slot ' + s.index + ' x');
+      ok(s.w > 0, 'slot ' + s.index + ' width');
+    });
+  });
+
+  it('slotAt() answers for every x across the board', function () {
+    const g = run('BOARD');
+    const b = g.PK.Game.G.board;
+    for (let x = 0; x <= g.PK.Board.W; x += 5) {
+      const s = g.PK.Board.slotAt(b, x);
+      ok(s && !s.hidden, 'no live slot at x=' + x);
+    }
+  });
+
+  it('slotAt() clamps outside the board rather than returning nothing', function () {
+    const g = run('BOARD');
+    const b = g.PK.Game.G.board;
+    ok(g.PK.Board.slotAt(b, -500), 'far left');
+    ok(g.PK.Board.slotAt(b, g.PK.Board.W + 500), 'far right');
+  });
+
+  it('a narrowed board hides the edge slots and kills the pegs behind them', function () {
+    const g = run('BOARD');
+    const b = g.PK.Game.G.board;
+    b.narrow = 2;
+    g.PK.Board.layoutSlots(b);
+    eq(b.slots.filter(function (s) { return s.hidden; }).length, 4, 'two hidden each side');
+    ok(b.wallLeft > 0 && b.wallRight < g.PK.Board.W, 'walls moved in');
+    const stranded = b.pegs.filter(function (p) {
+      return !p.dead && (p.x < b.wallLeft - 2 || p.x > b.wallRight + 2);
+    });
+    eq(stranded.length, 0, 'no live peg outside the walls');
+    // Still answerable everywhere, which is the point of the clamp.
+    for (let x = 0; x <= g.PK.Board.W; x += 5) ok(g.PK.Board.slotAt(b, x), 'x=' + x);
+  });
+});
+
+/* ============================================================
+   Physics — the only hard requirement is that a ball always
+   resolves. A ball that never lands is a soft-locked run.
+   ============================================================ */
+describe('physics', function () {
+  it('a ball dropped anywhere across the board lands', function () {
+    for (let x = 10; x <= 610; x += 50) {
+      const g = run('PHYS' + x);
+      g.PK.Game.dropBall(x);
+      const steps = g.helpers.settle();
+      eq(g.PK.Game.G.balls.length, 0, 'x=' + x + ' still in flight after ' + steps + ' steps');
+    }
+  });
+
+  it('a ball is clamped inside the walls even when aimed off the board', function () {
+    const g = run('CLAMP');
+    g.PK.Game.dropBall(-9999);
+    eq(g.PK.Game.G.balls.length, 1, 'a ball was spawned');
+    const b = g.PK.Game.G.balls[0];
+    ok(b.x >= 0 && b.x <= g.PK.Board.W, 'spawned at ' + b.x);
+    g.helpers.settle();
+    eq(g.PK.Game.G.balls.length, 0, 'landed');
+  });
+
+  it('the stuck-ball safety valve releases a ball that has run too long', function () {
+    /* Aged directly rather than contrived into a physical trap: the valve is
+       the last defence against a soft-locked floor, so what matters is that it
+       fires on age alone, whatever the ball is doing when it gets there. */
+    const g = run('VALVE');
+    g.PK.Game.dropBall(310);
+    const ball = g.PK.Game.G.balls[0];
+    ball.age = 24.9;
+    eq(g.PK.Game.G.balls.length, 1, 'still in play just under the limit');
+    for (let i = 0; i < 20 && g.PK.Game.G.balls.length; i++) g.PK.Game.update(1 / 60);
+    eq(g.PK.Game.G.balls.length, 0, 'released at age ' + ball.age.toFixed(1));
+    // Released, not landed — the floor moves on either way.
+    eq(g.PK.Game.G.floorResolved || g.PK.Game.canDrop(), true, 'the floor was not left stuck');
+  });
+
+  it('landing scores, records a best ball and writes a log line', function () {
+    const g = run('LAND');
+    const gained = g.helpers.drop(310);
+    ok(gained >= 0, 'score never goes backwards');
+    eq(g.PK.Game.G.stats.bestBall, gained, 'best ball is this ball');
+    eq(g.PK.Game.G.log.length, 1, 'one log line');
+    eq(g.PK.Game.G.stats.dropped, 1, 'one drop counted');
+  });
+
+  it('the log keeps only the last six lines', function () {
+    const g = run('LOG');
+    g.PK.Game.G.handSizeBase = 10;
+    for (let i = 0; i < 9 && g.PK.Game.canDrop(); i++) g.helpers.drop(200 + i * 20);
+    ok(g.PK.Game.G.log.length <= 6, 'log length ' + g.PK.Game.G.log.length);
+  });
+});
+
+/* ============================================================
+   The run loop
+   ============================================================ */
+describe('run', function () {
+  it('newRun() starts on floor 1 with a hand and a target', function () {
+    const g = run('NEW');
+    const G = g.PK.Game.G;
+    eq(G.floor, 1, 'floor');
+    eq(G.screen, 'play', 'screen');
+    eq(G.hand.length, 6, 'base hand');
+    eq(G.gold, 6, 'starting gold');
+    eq(G.target, 240, 'floor 1 target');
+    eq(G.score, 0, 'score');
+    eq(G.relics.length, 0, 'no relics');
+  });
+
+  it('the seed is upper-cased so a run is quotable', function () {
+    eq(run('lowercase').PK.Game.G.seed, 'LOWERCASE');
+  });
+
+  it('newRun() counts the run against the meta profile immediately', function () {
+    const g = fresh();
+    eq(g.helpers.meta().runs, 0, 'nothing yet');
+    g.PK.Game.newRun('COUNT');
+    eq(g.helpers.meta().runs, 1, 'one run');
+    g.PK.Game.newRun('COUNT2');
+    eq(g.helpers.meta().runs, 2, 'two runs');
+  });
+
+  it('dropBall() takes from the hand, and refuses once it is empty', function () {
+    const g = run('HAND');
+    const G = g.PK.Game.G;
+    eq(G.hand.length, 6);
+    g.helpers.drop(310);
+    eq(G.hand.length, 5, 'one ball consumed');
+    let guard = 0;
+    while (g.PK.Game.canDrop() && guard++ < 20) g.helpers.drop(310);
+    eq(G.hand.length, 0, 'hand emptied');
+    eq(g.PK.Game.canDrop(), false, 'cannot drop with an empty hand');
+  });
+
+  it('a second ball cannot be dropped while one is in flight', function () {
+    const g = run('INFLIGHT');
+    g.PK.Game.dropBall(310);
+    eq(g.PK.Game.G.balls.length, 1);
+    eq(g.PK.Game.canDrop(), false, 'board is busy');
+    g.PK.Game.dropBall(310);
+    eq(g.PK.Game.G.balls.length, 1, 'still just the one');
+  });
+
+  it('missing the target ends the run and posts nothing twice', function () {
+    const g = run('FAIL');
+    const G = g.PK.Game.G;
+    G.target = 1e9;                 // unreachable
+    g.helpers.playFloor(310);
+    eq(G.screen, 'gameover', 'run over');
+    eq(g.bus.screen, 'gameover', 'the game-over screen was shown');
+    ok(!g.PK.Save.hasRun(), 'the resumable run was cleared');
+  });
+
+  it('clearing the target opens the shop and pays gold', function () {
+    const g = run('CLEAR');
+    const G = g.PK.Game.G;
+    G.target = 1;                   // already met by the first ball
+    const goldBefore = G.gold;
+    g.helpers.drop(310);
+    g.PK.Game.cashOut();
+    eq(G.screen, 'shop', 'shop opened');
+    ok(G.gold > goldBefore, 'gold paid: ' + goldBefore + ' -> ' + G.gold);
+    eq(G.stats.goldEarned, G.gold - goldBefore, 'gold earned tracked');
+  });
+
+  it('cashOut() is refused while short of the target', function () {
+    const g = run('SHORT');
+    const G = g.PK.Game.G;
+    G.target = 1e9;
+    g.helpers.drop(310);
+    g.PK.Game.cashOut();
+    eq(G.screen, 'play', 'still playing');
+    eq(G.floorResolved, false, 'floor not resolved');
+  });
+
+  it('cashOut() is refused with a ball still in flight', function () {
+    const g = run('BUSY');
+    const G = g.PK.Game.G;
+    G.target = 1;
+    G.score = 500;
+    g.PK.Game.dropBall(310);
+    g.PK.Game.cashOut();
+    eq(G.screen, 'play', 'the board must be still first');
+  });
+
+  it('the next floor raises the target and carries no score by default', function () {
+    const g = run('FLOOR2');
+    const G = g.PK.Game.G;
+    G.target = 1;
+    g.helpers.drop(310);
+    g.PK.Game.cashOut();
+    g.PK.Game.leaveShop();
+    eq(G.floor, 2, 'floor 2');
+    eq(G.score, 0, 'score reset');
+    ok(G.target > 240, 'target grew to ' + G.target);
+  });
+
+  it('every fifth floor is a boss floor with a boss modifier', function () {
+    const g = run('BOSS');
+    const G = g.PK.Game.G;
+    for (let i = 0; i < 4; i++) {
+      G.target = 1;
+      g.helpers.drop(310);
+      g.PK.Game.cashOut();
+      g.PK.Game.leaveShop();
+    }
+    eq(G.floor, 5, 'reached floor 5');
+    ok(G.modifier && G.modifier.boss, 'boss modifier on floor 5');
+  });
+
+  it('a run is deterministic: same seed, same drops, same score', function () {
+    const xs = [120, 310, 480, 200, 400, 300];
+    function play() {
+      const g = run('DETERMINISM');
+      xs.forEach(function (x) { if (g.PK.Game.canDrop()) g.helpers.drop(x); });
+      const G = g.PK.Game.G;
+      return { score: G.score, pegs: G.stats.pegs, best: G.stats.bestBall, log: G.log };
+    }
+    deepEq(play(), play(), 'two identical runs diverged');
+  });
+
+  it('handSize() reports what startFloor() will actually deal', function () {
+    const g = run('CAP');
+    const G = g.PK.Game.G;
+    G.handSizeBase = 999;
+    eq(g.PK.Game.handSize(), g.PK.Game.MAX_HAND, 'clamped to the cap');
+    G.target = 1;
+    g.helpers.drop(310);
+    g.PK.Game.cashOut();
+    g.PK.Game.leaveShop();
+    eq(G.hand.length, g.PK.Game.MAX_HAND, 'the deal matches the promise');
+  });
+});
+
+/* ============================================================
+   The shop.
+
+   buy() takes an INDEX into G.shop.offers, not an offer — the
+   signature that has been mis-called before.
+   ============================================================ */
+describe('shop', function () {
+  /** Park a run in the shop with known gold. */
+  function shopping(seed, gold) {
+    const g = run(seed || 'SHOP');
+    const G = g.PK.Game.G;
+    G.target = 1;
+    g.helpers.drop(310);
+    g.PK.Game.cashOut();
+    G.gold = gold === undefined ? 100 : gold;
+    return g;
+  }
+
+  it('opens with three offers and a reroll price', function () {
+    const g = shopping();
+    eq(g.PK.Game.G.shop.offers.length, 3, 'offers');
+    eq(g.PK.Game.G.shop.rerollCost, 2, 'first reroll');
+    g.PK.Game.G.shop.offers.forEach(function (o) {
+      ok(o.data, 'offer ' + o.id + ' has display data');
+      ok(typeof o.cost === 'number', 'offer ' + o.id + ' has a cost');
+      eq(o.sold, false, 'nothing starts sold');
+    });
+  });
+
+  it('buy() takes an index and spends the gold', function () {
+    const g = shopping('BUYIDX', 100);
+    const G = g.PK.Game.G;
+    const cost = G.shop.offers[0].cost;
+    eq(g.PK.Game.buy(0), true, 'bought');
+    eq(G.gold, 100 - cost, 'gold spent');
+    eq(G.shop.offers[0].sold, true, 'marked sold');
+  });
+
+  it('buy() refuses an index that is not there', function () {
+    const g = shopping('BUYBAD', 100);
+    eq(g.PK.Game.buy(99), false, 'out of range');
+    eq(g.PK.Game.buy(-1), false, 'negative');
+    eq(g.PK.Game.G.gold, 100, 'no gold moved');
+  });
+
+  it('buy() refuses the same offer twice', function () {
+    const g = shopping('BUYTWICE', 100);
+    g.PK.Game.buy(0);
+    const gold = g.PK.Game.G.gold;
+    eq(g.PK.Game.buy(0), false, 'already sold');
+    eq(g.PK.Game.G.gold, gold, 'no second charge');
+  });
+
+  it('buy() refuses what the player cannot afford', function () {
+    const g = shopping('BROKE', 0);
+    eq(g.PK.Game.buy(0), false, 'denied');
+    eq(g.PK.Game.G.gold, 0, 'no debt');
+    eq(g.PK.Game.G.shop.offers[0].sold, false, 'not marked sold');
+  });
+
+  it('a bought relic is held, a bought ball goes into the bag', function () {
+    const g = shopping('KINDS', 500);
+    const G = g.PK.Game.G;
+    g.helpers.stockShop([
+      { kind: 'relic', id: 'high_roller', cost: 1, sold: false, data: g.PK.RELIC_BY_ID.high_roller },
+      { kind: 'ball', id: 'bomb', cost: 1, sold: false, data: g.PK.BALLS.bomb }
+    ]);
+    g.PK.Game.buy(0);
+    g.PK.Game.buy(1);
+    ok(g.PK.Game.hasRelic('high_roller'), 'relic held');
+    ok(G.bag.indexOf('bomb') !== -1, 'ball in the bag');
+  });
+
+  it('Bigger Hands raises the hand size by one', function () {
+    const g = shopping('HANDS', 500);
+    const G = g.PK.Game.G;
+    const before = G.handSizeBase;
+    g.helpers.stockShop([{ kind: 'service', id: 'hand', cost: 1, sold: false, data: { name: 'Bigger Hands' } }]);
+    g.PK.Game.buy(0);
+    eq(G.handSizeBase, before + 1, 'hand grew');
+  });
+
+  it('Bag Trim removes a Standard first, not the cheapest ball', function () {
+    /* Ranking by value ate Void (worth 0) and Lucky (worth 6) before it would
+       touch a Standard worth 10, which is the opposite of what a trim is for. */
+    const g = shopping('TRIM', 500);
+    const G = g.PK.Game.G;
+    G.bag = ['standard', 'voidball', 'lucky', 'heavy'];
+    g.helpers.stockShop([{ kind: 'service', id: 'trim', cost: 1, sold: false, data: { name: 'Bag Trim' } }]);
+    g.PK.Game.buy(0);
+    deepEq(G.bag, ['voidball', 'lucky', 'heavy'], 'the Standard went');
+  });
+
+  it('Bag Trim falls back to the lowest-value ball when no Standard is left', function () {
+    const g = shopping('TRIM2', 500);
+    const G = g.PK.Game.G;
+    G.bag = ['heavy', 'voidball', 'lucky', 'bouncy'];
+    g.helpers.stockShop([{ kind: 'service', id: 'trim', cost: 1, sold: false, data: { name: 'Bag Trim' } }]);
+    g.PK.Game.buy(0);
+    eq(G.bag.indexOf('voidball'), -1, 'the worthless ball went');
+    eq(G.bag.length, 3, 'exactly one removed');
+  });
+
+  it('Bag Trim never cuts the bag below three', function () {
+    const g = shopping('TRIM3', 500);
+    const G = g.PK.Game.G;
+    G.bag = ['standard', 'standard', 'standard'];
+    g.helpers.stockShop([{ kind: 'service', id: 'trim', cost: 1, sold: false, data: { name: 'Bag Trim' } }]);
+    g.PK.Game.buy(0);
+    eq(G.bag.length, 3, 'floor held');
+  });
+
+  it('Gilding turns a Standard into something else', function () {
+    const g = shopping('GILD', 500);
+    const G = g.PK.Game.G;
+    G.meta.bestFloor = 9;                 // everything unlocked, so the pool is full
+    G.bag = ['standard', 'heavy'];
+    g.helpers.stockShop([{ kind: 'service', id: 'gild', cost: 1, sold: false, data: { name: 'Gilding' } }]);
+    g.PK.Game.buy(0);
+    eq(G.bag.length, 2, 'bag size unchanged');
+    eq(G.bag.indexOf('standard'), -1, 'the Standard was upgraded');
+  });
+
+  it('the shop withholds an offer that could not do anything', function () {
+    const g = shopping('WITHHOLD', 500);
+    const G = g.PK.Game.G;
+    G.handSizeBase = g.PK.Game.MAX_HAND;   // Bigger Hands would be 11 gold for nothing
+    G.bag = ['standard', 'standard', 'standard'];   // Bag Trim cannot cut below three
+    for (let i = 0; i < 40; i++) {
+      g.PK.Game.G.gold = 500;
+      g.PK.Game.reroll();
+      G.shop.offers.forEach(function (o) {
+        ok(!(o.kind === 'service' && o.id === 'hand'), 'Bigger Hands offered at the cap');
+        ok(!(o.kind === 'service' && o.id === 'trim'), 'Bag Trim offered at the bag floor');
+      });
+    }
+  });
+
+  it('reroll costs gold and gets steadily more expensive', function () {
+    const g = shopping('REROLL', 100);
+    const G = g.PK.Game.G;
+    g.PK.Game.reroll();
+    eq(G.gold, 98, 'first reroll cost 2');
+    eq(G.shop.rerollCost, 3, 'price rose');
+    g.PK.Game.reroll();
+    eq(G.gold, 95, 'second reroll cost 3');
+    eq(G.shop.rerollCost, 4, 'price rose again');
+  });
+
+  it('reroll is refused when it cannot be paid for', function () {
+    const g = shopping('NOREROLL', 1);
+    const G = g.PK.Game.G;
+    const offers = G.shop.offers.slice();
+    g.PK.Game.reroll();
+    eq(G.gold, 1, 'no gold moved');
+    deepEq(G.shop.offers, offers, 'offers untouched');
+  });
+
+  it('a relic already held is never offered again', function () {
+    const g = shopping('DUPE', 500);
+    const G = g.PK.Game.G;
+    G.relics = g.PK.RELICS.map(function (r) { return r.id; });   // hold everything
+    for (let i = 0; i < 30; i++) {
+      G.gold = 500;
+      g.PK.Game.reroll();
+      G.shop.offers.forEach(function (o) {
+        ok(o.kind !== 'relic', 'offered a relic already held: ' + o.id);
+      });
+    }
+  });
+});
+
+/* ============================================================
+   Persistence.
+
+   Two keys, deliberately: a corrupt run must never take the meta
+   progression down with it.
+   ============================================================ */
+describe('save: meta', function () {
+  it('returns defaults when there is nothing stored', function () {
+    const m = fresh().helpers.meta();
+    eq(m.bestFloor, 0); eq(m.runs, 0); eq(m.bestScore, 0); eq(m.totalScore, 0);
+  });
+
+  it('round-trips', function () {
+    const g = fresh();
+    g.PK.Save.save({ bestFloor: 7, runs: 3, bestScore: 900, totalScore: 4000, deepestSeed: 'ABC' });
+    const m = g.helpers.meta();
+    eq(m.bestFloor, 7); eq(m.runs, 3); eq(m.bestScore, 900); eq(m.deepestSeed, 'ABC');
+  });
+
+  it('survives a corrupted blob', function () {
+    const g = fresh({ storage: { 'pegfall.meta.v1': 'not json' } });
+    const m = g.helpers.meta();
+    eq(m.bestFloor, 0, 'fell back to a blank profile');
+    eq(m.runs, 0);
+  });
+
+  it('fills in fields a older save did not have', function () {
+    const g = fresh({ storage: { 'pegfall.meta.v1': JSON.stringify({ bestFloor: 4 }) } });
+    const m = g.helpers.meta();
+    eq(m.bestFloor, 4, 'kept what was there');
+    eq(m.totalScore, 0, 'defaulted what was not');
+    eq(m.runs, 0);
+  });
+
+  it('records the best floor and best score when a floor is banked', function () {
+    const g = run('BEST');
+    const G = g.PK.Game.G;
+    G.target = 1;
+    g.helpers.drop(310);
+    g.PK.Game.cashOut();
+    const m = g.helpers.meta();
+    eq(m.bestFloor, 1, 'floor 1 banked');
+    eq(m.bestScore, G.score === 0 ? 0 : m.bestScore, 'best score recorded');
+    ok(m.bestScore > 0, 'best score is real');
+  });
+});
+
+describe('save: unlocks', function () {
+  function balls(bestFloor) {
+    const g = fresh();
+    return g.PK.Save.unlockedBalls({ bestFloor: bestFloor });
+  }
+
+  it('starts with the five base balls', function () {
+    deepEq(balls(0).sort(), ['bouncy', 'heavy', 'lucky', 'splitter', 'standard']);
+  });
+
+  it('unlocks on the documented floors', function () {
+    ok(balls(2).indexOf('bomb') === -1, 'bomb is not free');
+    ok(balls(3).indexOf('bomb') !== -1, 'bomb at floor 3');
+    ok(balls(5).indexOf('ghost') !== -1, 'ghost at floor 5');
+    ok(balls(7).indexOf('magnet') !== -1, 'magnet at floor 7');
+    ok(balls(9).indexOf('voidball') !== -1, 'voidball at floor 9');
+  });
+
+  it('every unlockable ball id exists in the content table', function () {
+    const g = fresh();
+    g.PK.Save.UNLOCKS.forEach(function (u) {
+      ok(g.PK.BALLS[u.ball], 'no such ball: ' + u.ball);
+    });
+    balls(9).forEach(function (id) { ok(g.PK.BALLS[id], 'no such ball: ' + id); });
+  });
+
+  it('nextUnlock() points at the next one, and nothing at the end', function () {
+    const g = fresh();
+    eq(g.PK.Save.nextUnlock({ bestFloor: 0 }).ball, 'bomb');
+    eq(g.PK.Save.nextUnlock({ bestFloor: 3 }).ball, 'ghost');
+    eq(g.PK.Save.nextUnlock({ bestFloor: 99 }), null, 'all unlocked');
+  });
+});
+
+describe('save: the resumable run', function () {
+  it('a fresh install has no run to resume', function () {
+    const g = fresh();
+    eq(g.PK.Game.hasSave(), false);
+    eq(g.PK.Game.resumeRun(), false, 'nothing to resume');
+  });
+
+  it('a started run is on disk, and gameOver clears it', function () {
+    const g = run('RESUME');
+    ok(g.PK.Game.hasSave(), 'saved at the first still moment');
+    g.PK.Game.G.target = 1e9;
+    g.helpers.playFloor(310);
+    eq(g.PK.Game.G.screen, 'gameover');
+    eq(g.PK.Game.hasSave(), false, 'cleared on game over');
+  });
+
+  it('resumes a mid-floor run with its score, hand and board intact', function () {
+    const g = run('MIDRUN');
+    const G = g.PK.Game.G;
+    g.helpers.drop(310);
+    g.helpers.drop(250);
+    const snap = {
+      score: G.score, hand: G.hand.slice(), gold: G.gold, floor: G.floor,
+      target: G.target, dropIndex: G.dropIndex, pegs: G.board.pegs.length
+    };
+
+    // A second browser session: same storage, fresh game objects.
+    const g2 = fresh({ storage: g.localStorage._store });
+    eq(g2.PK.Game.hasSave(), true, 'the run is there');
+    eq(g2.PK.Game.resumeRun(), true, 'resumed');
+    const R = g2.PK.Game.G;
+    eq(R.score, snap.score, 'score');
+    deepEq(R.hand, snap.hand, 'hand');
+    eq(R.gold, snap.gold, 'gold');
+    eq(R.floor, snap.floor, 'floor');
+    eq(R.target, snap.target, 'target');
+    eq(R.dropIndex, snap.dropIndex, 'drop index');
+    eq(R.board.pegs.length, snap.pegs, 'the board came back whole');
+    eq(R.balls.length, 0, 'nothing in flight');
+  });
+
+  it('a resumed run continues the RNG rather than replaying it', function () {
+    const g = run('RNGRESUME');
+    g.helpers.drop(310);
+    const stateOnDisk = g.helpers.savedRun().rngState;
+    const g2 = fresh({ storage: g.localStorage._store });
+    g2.PK.Game.resumeRun();
+    eq(g2.PK.Game.G.rng.state, stateOnDisk, 'stream position restored');
+    // And it keeps going from there rather than from the seed.
+    eq(g2.PK.Game.G.rng.next(), g.PK.Game.G.rng.next(), 'next draw matches');
+  });
+
+  it('resuming into the shop restores the offers from their ids', function () {
+    const g = run('SHOPRESUME');
+    const G = g.PK.Game.G;
+    G.target = 1;
+    g.helpers.drop(310);
+    g.PK.Game.cashOut();
+    const ids = G.shop.offers.map(function (o) { return o.id; });
+
+    const g2 = fresh({ storage: g.localStorage._store });
+    g2.PK.Game.resumeRun();
+    const R = g2.PK.Game.G;
+    eq(R.screen, 'shop', 'back in the shop');
+    deepEq(R.shop.offers.map(function (o) { return o.id; }), ids, 'same offers');
+    R.shop.offers.forEach(function (o) {
+      ok(o.data, 'offer ' + o.id + ' got its display data back');
+    });
+    eq(g2.bus.screen, 'shop', 'the shop screen was shown');
+  });
+
+  it('a run saved by an older build is dropped, not half-restored', function () {
+    const g = fresh({ storage: { 'pegfall.run.v1': JSON.stringify({ v: 0, seed: 'OLD', floor: 4 }) } });
+    eq(g.PK.Save.loadRun(), null, 'version mismatch rejected');
+    eq(g.PK.Game.hasSave(), false);
+    eq(g.PK.Game.resumeRun(), false, 'refused to resume');
+  });
+
+  it('a corrupt run does not take the meta progression with it', function () {
+    const g = fresh({
+      storage: {
+        'pegfall.run.v1': '{{{ not json',
+        'pegfall.meta.v1': JSON.stringify({ bestFloor: 12, runs: 40 })
+      }
+    });
+    eq(g.PK.Game.hasSave(), false, 'the run is gone');
+    eq(g.helpers.meta().bestFloor, 12, 'the profile survived');
+    eq(g.helpers.meta().runs, 40);
+  });
+
+  it('a run is never snapshotted with a ball in flight', function () {
+    const g = run('INFLIGHTSAVE');
+    g.PK.Game.dropBall(310);
+    g.PK.Game.persist();
+    const saved = g.helpers.savedRun();
+    ok(saved, 'something was saved');
+    ok(saved.balls === undefined, 'balls are not part of a snapshot');
+  });
+
+  it('no run is written once the run is over', function () {
+    const g = run('OVERSAVE');
+    g.PK.Save.clearRun();
+    g.PK.Game.G.screen = 'gameover';
+    g.PK.Game.persist();
+    eq(g.PK.Game.hasSave(), false, 'a finished run must not be resumable');
+  });
+});
+
+/* ============================================================
+   Settings — kept apart from run state so they survive a dead run.
+   ============================================================ */
+describe('settings', function () {
+  it('defaults when nothing is stored', function () {
+    const g = fresh();
+    eq(g.PK.Settings.sfx, true);
+    eq(g.PK.Settings.volume, 0.6);
+  });
+
+  it('round-trips through storage', function () {
+    const g = fresh();
+    g.PK.setSetting('volume', 0.2);
+    const g2 = fresh({ storage: g.localStorage._store });
+    eq(g2.PK.Settings.volume, 0.2, 'kept');
+  });
+
+  it('ignores keys it does not know', function () {
+    const g = fresh({ storage: { 'pegfall.settings.v1': JSON.stringify({ sfx: false, nonsense: 1 }) } });
+    eq(g.PK.Settings.sfx, false, 'known key applied');
+    eq(g.PK.Settings.nonsense, undefined, 'unknown key ignored');
+  });
+
+  it('survives a corrupted blob', function () {
+    const g = fresh({ storage: { 'pegfall.settings.v1': 'not json' } });
+    eq(g.PK.Settings.sfx, true, 'defaults');
+  });
+
+  it('a ball can be played before the audio context has ever been opened', function () {
+    /* Sound is gated on a user gesture, so every voice has to be a no-op until
+       one arrives. Node never opens a context at all, which is the same path. */
+    const g = run('AUDIO');
+    g.helpers.drop(310);      // drop(), peg(), land() all fire under here
+    ok(g.PK.Game.G.stats.dropped === 1, 'the drop went through');
+  });
+
+  it('audio stands itself down when there is no AudioContext to open', function () {
+    const g = run('AUDIO2');
+    eq(g.PK.Sfx.available, true, 'nothing has been tried yet');
+    g.PK.Sfx.resume();        // what the first pointerdown does in main.js
+    eq(g.PK.Sfx.available, false, 'gave up after failing to open a context');
+    g.helpers.drop(310);      // and keeps playing regardless
+    eq(g.PK.Game.G.stats.dropped, 1, 'the game is unaffected');
+  });
+});
+
+/* ============================================================
+   The arcade seam.
+
+   PEGFALL reads exactly two things from the shared layer, and both
+   must be dormant when it is absent.
+   ============================================================ */
+describe('arcade integration', function () {
+  it('plays a whole floor with no arcade layer present', function () {
+    const g = run('NOARCADE');
+    eq(g.Arcade, undefined, 'no arcade in this sandbox');
+    g.PK.Game.G.target = 1e9;
+    g.helpers.playFloor(310);
+    eq(g.PK.Game.G.screen, 'gameover', 'the run still finished');
+  });
+
+  it('an inactive unlock grants nothing', function () {
+    const g = fresh({ arcade: true });
+    g.Arcade.progress.grant('pegfall', 500);
+    g.Arcade.progress.buy('pegfall', 'deep_pockets');
+    g.Arcade.progress.setActive('pegfall', 'deep_pockets', false);
+    g.PK.Game.newRun('OFF');
+    eq(g.PK.Game.G.gold, 6, 'owned but switched off changes nothing');
+  });
+
+  it('an active unlock reaches the game', function () {
+    const g = fresh({ arcade: true });
+    g.Arcade.progress.grant('pegfall', 500);
+    g.Arcade.progress.buy('pegfall', 'deep_pockets');
+    g.PK.Game.newRun('ON');
+    eq(g.PK.Game.G.gold, 10, '6 + the 4 from Deep Pockets');
+  });
+
+  it('a purchased ball joins the shop pool without waiting for its floor', function () {
+    const g = fresh({ arcade: true });
+    eq(g.PK.Save.unlockedBalls({ bestFloor: 0 }).indexOf('bomb'), -1, 'locked to start');
+    g.Arcade.progress.grant('pegfall', 500);
+    g.Arcade.progress.buy('pegfall', 'ball_bomb');
+    ok(g.PK.Save.unlockedBalls({ bestFloor: 0 }).indexOf('bomb') !== -1, 'unlocked by purchase');
+  });
+
+  it('every ball the catalogue sells actually exists in the game', function () {
+    /* The catalogue names ball ids as effect tags ('ball:voidball'); a typo
+       there sells a player something the shop can never stock. */
+    const g = fresh({ arcade: true });
+    const prog = g.Arcade.progression.pegfall;
+    prog.unlocks.forEach(function (u) {
+      const bits = String(u.effect).split(':');
+      if (bits[0] !== 'ball') return;
+      ok(g.PK.BALLS[bits[1]], u.id + ' sells a ball that does not exist: ' + bits[1]);
+    });
+  });
+
+  it('a finished run posts its score exactly once', function () {
+    const g = fresh({ arcade: true });
+    g.PK.Game.newRun('POST');
+    const G = g.PK.Game.G;
+    G.target = 1e9;
+    g.helpers.playFloor(310);
+    eq(G.screen, 'gameover');
+    eq(g.bus.submitted.length, 1, 'one submission');
+    eq(g.bus.recorded.length, 1, 'one progression record');
+    const sub = g.bus.submitted[0];
+    eq(sub.gameId, 'pegfall', 'game id');
+    eq(sub.payload.score, G.stats.runTotal, 'the run total, not the floor score');
+    eq(sub.payload.meta.floor, G.floor, 'floor rides along in meta');
+    eq(sub.payload.meta.seed, G.seed, 'seed rides along');
+  });
+
+  it('the posted run total spans every floor, not just the last', function () {
+    const g = fresh({ arcade: true });
+    g.PK.Game.newRun('TOTAL');
+    const G = g.PK.Game.G;
+    // Bank one floor, then die on the next.
+    G.target = 1;
+    g.helpers.drop(310);
+    g.PK.Game.cashOut();
+    const banked = G.stats.runTotal;
+    ok(banked > 0, 'floor 1 banked ' + banked);
+    g.PK.Game.leaveShop();
+    G.target = 1e9;
+    g.helpers.playFloor(310);
+    eq(G.screen, 'gameover');
+    ok(g.bus.submitted[0].payload.score >= banked, 'the total kept floor 1');
+  });
+});
+
+/* ---------- report ---------- */
+const totalTests = passed + failures.length;
+if (failures.length) {
+  console.log('\n' + failures.length + ' of ' + totalTests + ' tests FAILED\n');
+  failures.forEach(function (f) {
+    console.log('  x [' + f.group + '] ' + f.name);
+    console.log('      ' + f.err);
+  });
+  console.log('');
+  process.exit(1);
+} else {
+  console.log('\nall ' + totalTests + ' tests passed\n');
+}

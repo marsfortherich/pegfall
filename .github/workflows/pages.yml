@@ -16,8 +16,23 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      # The logic layer (rng, board, physics, save, game) runs headlessly, so
+      # CI can gate the deploy on it. render.js, ui.js and main.js are the only
+      # DOM files and are not covered here.
+      - name: Unit tests
+        run: node tools/test.js
+
   deploy:
     name: Deploy
+    needs: test
     runs-on: ubuntu-latest
     environment:
       name: github-pages
