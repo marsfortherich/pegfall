@@ -43,6 +43,29 @@ jobs:
       # The whole game is static: no build, no dependencies. The CNAME file at
       # the repo root is what binds this site to pegfall.marsindustries.dev,
       # and .nojekyll stops Pages from running the folder through Jekyll.
+      - name: Verify the shared/ copy is intact
+        run: |
+          test -f shared/MANIFEST || {
+            echo "::error::shared/MANIFEST is missing -- run tools/sync-shared.py in the arcade and commit"; exit 1; }
+          ( cd shared && sha256sum -c --quiet MANIFEST ) || {
+            echo "::error::shared/ does not match its manifest. Either a file here was edited directly (edit the arcade's /shared instead) or a sync was interrupted. Re-run tools/sync-shared.py and commit."; exit 1; }
+          # sha256sum -c cannot see a file the manifest does not list, so count too.
+          listed=$(grep -cv '^#' shared/MANIFEST)
+          present=$(find shared -type f ! -name MANIFEST | wc -l)
+          if [ "$listed" -ne "$present" ]; then
+            echo "::error::shared/ holds $present files but MANIFEST lists $listed -- a leftover from an old sync. Re-run tools/sync-shared.py (it prunes) and commit."
+            find shared -type f ! -name MANIFEST | LC_ALL=C sort
+            exit 1
+          fi
+          echo "shared/: $present files, all matching MANIFEST"
+          # NOTE: this proves the copy is complete and unmodified, NOT that it is
+          # current -- the manifest travels with the files, so an old copy carries an
+          # old manifest and agrees with itself. Only `python tools/sync-shared.py
+          # --check`, run at the arcade root, can answer that.
+
+      - name: Fail if cached assets changed without a version bump
+        run: python3 shared/tools/asset-digest.py --stamp index.html js css shared
+
       - name: Check the published root is intact
         run: |
           test -f index.html || { echo "::error::index.html is missing"; exit 1; }

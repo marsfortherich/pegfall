@@ -1,0 +1,16 @@
+# shared/ manifest — written by tools/sync-shared.py. Do not edit.
+# Verify a copy with:  cd shared && sha256sum -c MANIFEST
+# It proves a copy is complete and unmodified, NOT that it is current:
+# run `python tools/sync-shared.py --check` at the arcade root for that.
+1d4bcc4f2ee6fb4116504615fab74bf5237da78205dca651f78d3b856c64fe0d  broker.html
+96407304245930b283e2d1fff0152e244e0323cbad4fd349b27b80df351be6db  css/arcade.css
+c5a4061fcbc4c9f97c50cd6540f17832bd6dbcb54fbcd53e27e142721d4cbb7d  js/arcade-auth.js
+8ee453e32a439ecb8372c85f7a23f1b35674189aa18f20e86da338618a399b28  js/arcade-broker.js
+f2b15a8aedc275662b8660fb1f1258afd6401b6ec429efa300e8934b44d2c596  js/arcade-catalogue.js
+ae0b9ebe4ef64daa232fb777e788b064107d267cb0f062cd0d6b43f5cf720ea5  js/arcade-config.js
+228601a69ad8cebc3813b3ef4ebb913098826485ce462dad56e2b2e2c4632b0a  js/arcade-dealer.js
+ce030900b9a915bd269219808f4cdd4308d2e9dc938face733f6127862053a2b  js/arcade-progress.js
+a17f91fcf1c91ddcf79b22f4497fbae75bc69f361d5a15f48e4f1270f5b849c4  js/arcade-scores.js
+35272cd967f54853850f9bd446f717166aa9f430813b5bfaea29b176e3abd822  js/arcade-ui.js
+7d4341e2d6bae434d9fafb3041a0956beada3cb040378bfcc8a41ec18f777899  js/arcade.js
+36a3f958aa62cabf4f6ae8473d4f01d15f5868f9bd63a2a4eea2b1eb6a7e86a4  tools/asset-digest.py
