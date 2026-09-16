@@ -245,6 +245,140 @@ describe('physics', function () {
 });
 
 /* ============================================================
+   Peg regeneration.
+
+   Shattering already paid — Bomb is the strongest ball in the
+   game — but it read as self-harm, because the loss was visible
+   and permanent. These cover the cooldown that replaces it, and
+   the one peg that must never come back.
+   ============================================================ */
+describe('peg regeneration', function () {
+  /**
+   * Play Bomb balls until the game itself shatters a peg, and return it.
+   * Goes through the real api.shatter rather than imitating it — that closure
+   * is not exported, and a test that reimplements it proves nothing.
+   */
+  function shatterForReal(seed) {
+    const g = run(seed);
+    const G = g.PK.Game.G;
+    G.handSizeBase = 30;
+    G.hand = new Array(30).fill('bomb');
+    G.target = 1e9;                     // never resolve; we want the board
+    let guard = 0;
+    while (guard++ < 30 && g.PK.Game.canDrop()) {
+      g.helpers.drop(250 + (guard % 5) * 30);
+      const hit = G.board.pegs.find(function (p) { return p.dead && p.respawn > 0; });
+      if (hit) return { g: g, peg: hit };
+    }
+    return { g: g, peg: null };
+  }
+
+  it('the game marks a peg it really shattered', function () {
+    const { g, peg } = shatterForReal('REGEN');
+    ok(peg, 'no peg was shattered in 30 Bomb drops — the path is untested');
+    eq(peg.dead, true, 'gone for now');
+    ok(peg.respawn > 0 && peg.respawn <= g.PK.Game.PEG_RESPAWN_DROPS,
+      'queued to return, at ' + peg.respawn);
+  });
+
+  it('it returns after the documented number of drops', function () {
+    const g = run('REGEN2');
+    const G = g.PK.Game.G;
+    const peg = G.board.pegs.find(function (p) { return !p.dead; });
+    const n = g.PK.Game.PEG_RESPAWN_DROPS;
+    peg.dead = true;
+    peg.respawn = n;
+
+    for (let i = 0; i < n - 1; i++) {
+      g.helpers.drop(310);
+      eq(peg.dead, true, 'still gone after ' + (i + 1) + ' drop(s)');
+    }
+    g.helpers.drop(310);
+    eq(peg.dead, false, 'back after ' + n + ' drops');
+    eq(peg.respawn, 0, 'no longer counting');
+    ok(peg.flash > 0, 'flashes so the return is visible');
+  });
+
+  it('end to end, a peg is missing for one drop and back for the next', function () {
+    /* Pins the off-by-one rather than leaving it to be rediscovered: the ball
+       that breaks a peg is still in the air, so its own landing spends the
+       first tick of the countdown. */
+    const { g, peg } = shatterForReal('REGENGAP');
+    ok(peg, 'a peg was shattered');
+    eq(peg.dead, true, 'gone when its breaker lands');
+    eq(peg.respawn, g.PK.Game.PEG_RESPAWN_DROPS - 1, 'one tick already spent');
+
+    g.helpers.drop(310);
+    eq(peg.dead, false, 'back after one further drop');
+  });
+
+  it('a shattered peg is playable again once it is back', function () {
+    const { g, peg } = shatterForReal('REGEN5');
+    ok(peg, 'a peg was shattered');
+    const G = g.PK.Game.G;
+    let guard = 0;
+    while (peg.dead && guard++ < 6 && g.PK.Game.canDrop()) g.helpers.drop(310);
+    eq(peg.dead, false, 'came back');
+    // Physics skips dead pegs; a revived one has to be collidable again.
+    const live = G.board.pegs.filter(function (p) { return !p.dead; });
+    ok(live.indexOf(peg) !== -1, 'counted among the live pegs');
+  });
+
+  it('a revived brittle peg is whole again, not one hit from breaking', function () {
+    const g = run('REGEN3');
+    const G = g.PK.Game.G;
+    const peg = G.board.pegs.find(function (p) { return !p.dead; });
+    peg.type = 'brittle';
+    peg.hp = 2;
+    peg.dead = true;
+    peg.respawn = 1;
+    g.helpers.drop(310);
+    eq(peg.dead, false, 'back');
+    eq(peg.hp, 0, 'hp reset');
+  });
+
+  it('a peg the walls cut off never grows back', function () {
+    /* Iron Maiden kills the pegs outside the narrowed walls. They are dead for
+       a different reason and must stay that way, or they would reappear in the
+       gutter where no ball can reach them. */
+    const g = run('REGEN4');
+    const G = g.PK.Game.G;
+    G.board.narrow = 2;
+    g.PK.Board.layoutSlots(G.board);
+    const culled = G.board.pegs.filter(function (p) { return p.dead; });
+    ok(culled.length > 0, 'the walls cut some off');
+    culled.forEach(function (p) { eq(p.respawn, 0, 'not queued to return'); });
+
+    for (let i = 0; i < 6 && g.PK.Game.canDrop(); i++) g.helpers.drop(310);
+    culled.forEach(function (p) {
+      eq(p.dead, true, 'peg at x=' + Math.round(p.x) + ' came back outside the walls');
+    });
+  });
+
+  it('regeneration consumes no randomness, so seeds still replay', function () {
+    /* A percentage roll — "a third of shattered pegs come back" — would have
+       drawn from G.rng on every drop and quietly changed what every existing
+       seed plays like. A fixed countdown draws nothing. */
+    const g1 = run('REGENSEED');
+    const g2 = run('REGENSEED');
+    // Queue a return in one of them and not the other.
+    const peg = g1.PK.Game.G.board.pegs.find(function (p) { return !p.dead; });
+    peg.dead = true;
+    peg.respawn = g1.PK.Game.PEG_RESPAWN_DROPS;
+
+    for (let i = 0; i < 4; i++) {
+      if (g1.PK.Game.canDrop()) g1.PK.Game.dropBall(310);
+      if (g2.PK.Game.canDrop()) g2.PK.Game.dropBall(310);
+      g1.helpers.settle();
+      g2.helpers.settle();
+    }
+    eq(peg.dead, false, 'the peg did come back, so the path ran');
+    eq(g1.PK.Game.G.rng.state, g2.PK.Game.G.rng.state,
+      'reviving a peg moved the RNG stream');
+  });
+});
+
+/* ============================================================
    The run loop
    ============================================================ */
 describe('run', function () {
@@ -285,13 +419,39 @@ describe('run', function () {
     eq(g.PK.Game.canDrop(), false, 'cannot drop with an empty hand');
   });
 
-  it('a second ball cannot be dropped while one is in flight', function () {
-    const g = run('INFLIGHT');
-    g.PK.Game.dropBall(310);
-    eq(g.PK.Game.G.balls.length, 1);
-    eq(g.PK.Game.canDrop(), false, 'board is busy');
-    g.PK.Game.dropBall(310);
-    eq(g.PK.Game.G.balls.length, 1, 'still just the one');
+  it('a volley of balls can be in the air at once, up to the cap', function () {
+    const g = run('VOLLEY');
+    const G = g.PK.Game.G;
+    const cap = g.PK.Game.MAX_IN_FLIGHT;
+    ok(cap > 1, 'multi-drop is on');
+    for (let i = 0; i < cap; i++) {
+      eq(g.PK.Game.canDrop(), true, 'should still accept ball ' + (i + 1));
+      g.PK.Game.dropBall(250 + i * 30);
+    }
+    eq(G.balls.length, cap, 'all of them are in the air');
+    eq(G.hand.length, 6 - cap, 'and all came out of the hand');
+  });
+
+  it('the cap is enforced rather than advisory', function () {
+    const g = run('CAP2');
+    const G = g.PK.Game.G;
+    const cap = g.PK.Game.MAX_IN_FLIGHT;
+    for (let i = 0; i < cap; i++) g.PK.Game.dropBall(300);
+    eq(g.PK.Game.canDrop(), false, 'full');
+    g.PK.Game.dropBall(300);
+    eq(G.balls.length, cap, 'the extra drop was refused');
+    eq(G.hand.length, 6 - cap, 'and cost no ball from the hand');
+  });
+
+  it('every ball of a volley lands and scores', function () {
+    const g = run('VOLLEYLAND');
+    const G = g.PK.Game.G;
+    const cap = g.PK.Game.MAX_IN_FLIGHT;
+    for (let i = 0; i < cap; i++) g.PK.Game.dropBall(220 + i * 45);
+    g.helpers.settle();
+    eq(G.balls.length, 0, 'the board came to rest');
+    eq(G.stats.dropped, cap, 'all counted');
+    eq(G.log.length, cap, 'each one logged');
   });
 
   it('missing the target ends the run and posts nothing twice', function () {
@@ -735,6 +895,36 @@ describe('save: the resumable run', function () {
     const saved = g.helpers.savedRun();
     ok(saved, 'something was saved');
     ok(saved.balls === undefined, 'balls are not part of a snapshot');
+  });
+
+  it('a volley interrupted mid-flight costs the player nothing', function () {
+    /* The hand is decremented the moment a ball is dropped, so saving while
+       others are still falling would store a hand short of balls that never
+       landed — closing the tab there would simply eat them. The save waits for
+       the board to be still, so an interrupted volley rewinds to before it. */
+    const g = run('VOLLEYSAVE');
+    const G = g.PK.Game.G;
+    const cap = g.PK.Game.MAX_IN_FLIGHT;
+
+    g.helpers.drop(310);                       // one clean drop, so a save exists
+    const onDisk = g.helpers.savedRun();
+    eq(onDisk.hand.length, G.hand.length, 'saved state matches the table');
+
+    for (let i = 0; i < cap; i++) g.PK.Game.dropBall(240 + i * 40);
+    eq(G.hand.length, onDisk.hand.length - cap, 'the hand paid for the volley');
+
+    // One lands, the rest are still falling: nothing may be written yet.
+    let guard = 0;
+    while (G.balls.length === cap && guard++ < 4000) g.PK.Game.update(1 / 120);
+    ok(G.balls.length < cap, 'at least one landed');
+    if (G.balls.length > 0) {
+      deepEq(g.helpers.savedRun().hand, onDisk.hand,
+        'saved mid-volley — those balls would be lost');
+    }
+
+    g.helpers.settle();
+    eq(G.balls.length, 0, 'board still');
+    deepEq(g.helpers.savedRun().hand, G.hand, 'saved once everything came to rest');
   });
 
   it('no run is written once the run is over', function () {

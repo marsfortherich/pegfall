@@ -321,14 +321,17 @@
       '<div class="card menu help">' +
       '<h2 class="ovh">HOW TO PLAY</h2>' +
       '<div class="helpbody">' +
-      '<p><b>Drop a ball.</b> Click the board to aim; it falls where you point.</p>' +
+      '<p><b>Drop a ball.</b> Click the board to aim; it falls where you point. You can have ' +
+      'up to three in the air at once — keep clicking.</p>' +
       '<p><b>Pegs feed it.</b> A ball starts at its type’s value and grows with every peg it ' +
       'clips. Gold pegs add a lot, charged pegs add to the slot multiplier, bumpers kick it ' +
-      'sideways, brittle pegs break for a bonus.</p>' +
+      'sideways, brittle pegs break for a bonus. A shattered peg grows back a drop later, so ' +
+      'breaking the board is never a permanent loss.</p>' +
       '<p><b>The slot multiplies it.</b> <span class="fx">ball value × slot multiplier = score</span> ' +
       'The outer slots pay 10×, the centre pays 0.8× — so a fat ball in a poor slot is a waste.</p>' +
       '<p><b>Clear the target</b> before the hand runs out or the run ends. Beat it and the rest ' +
-      'of your hand becomes gold instead — you never have to drop them.</p>' +
+      'of your hand becomes gold instead — you never have to drop them. Dropping on anyway buys ' +
+      'score, not gold: every ball you spend is a gold you do not bank.</p>' +
       '<p><b>Between floors</b> you buy relics and stranger balls. From floor 3 the board starts ' +
       'fighting back, and every fifth floor is a boss.</p>' +
       '</div>' +

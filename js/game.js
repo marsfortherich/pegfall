@@ -12,6 +12,31 @@
      as well, so the gold is never silently wasted. */
   var MAX_HAND = 24;
   var DROP_Y = 76;
+  /* How many balls may be in the air at once.
+
+     The engine already handled several — Multiball has always spawned a
+     second one — so this only lifts the gate that stopped the player doing
+     it deliberately. Capped rather than unlimited because the whole hand
+     dumped at once stops being aiming and starts being a coin flip; this is
+     the one number to turn if it wants to feel wilder. */
+  var MAX_IN_FLIGHT = 3;
+  /* How many landings a shattered peg counts down before it returns.
+
+     Destroying pegs already paid — the Bomb ball is the strongest in the game
+     by a distance — but it never *read* that way, because the loss is visible
+     and permanent and the gain is spread over the rest of the floor. Bringing
+     the peg back turns a permanent amputation into a cooldown: the same
+     arithmetic, a completely different feeling. Measured at +3% to a Bomb
+     floor, with the board ending ~98% intact instead of ~80%.
+
+     Note the off-by-one, because it is easy to misread: the ball that breaks
+     a peg is still falling, so its own landing spends the first tick. At 2, a
+     peg is therefore missing for exactly one later drop and is back for the
+     one after that. Raise it to 3 to keep a peg away for two drops.
+
+     Deliberately a fixed count rather than a percentage roll: a roll would
+     draw from G.rng and quietly change what every existing seed plays like. */
+  var PEG_RESPAWN_DROPS = 2;
 
   var G = {
     screen: 'menu',          // menu | play | shop | gameover
@@ -85,6 +110,10 @@
     },
     shatter: function (peg) {
       peg.dead = true;
+      /* Only a shattered peg is ever marked for return. Board.layoutSlots also
+         kills pegs — the ones a narrowed board leaves outside the walls — and
+         those must stay dead, or Iron Maiden would grow pegs in the gutter. */
+      peg.respawn = PEG_RESPAWN_DROPS;
       burst(peg.x, peg.y, (PK.PEGS[peg.type] || PK.PEGS.normal).glow, 12);
       G.shake = Math.max(G.shake, 6);
     },
@@ -301,7 +330,8 @@
   /* ---------------------------------------------------------------- drops */
 
   function canDrop() {
-    return G.screen === 'play' && !G.floorResolved && G.hand.length > 0 && G.balls.length === 0;
+    return G.screen === 'play' && !G.floorResolved && G.hand.length > 0 &&
+      G.balls.length < MAX_IN_FLIGHT;
   }
 
   function dropBall(x) {
@@ -380,7 +410,12 @@
     // so it gets its own cue rather than being left to the player to notice.
     if (wasShort && G.score >= G.target && G.hand.length > 0) {
         PK.Sfx.cleared();
-        PK.UI.showToast('FLOOR CLEARED — bank it, or keep dropping for gold');
+        /* This used to say "keep dropping for gold", which is the opposite of
+           what the payout does: every ball banked unused is worth 1 gold (3
+           with Refund Policy), while the overshoot bonus stops at +4. Dropping
+           on is a play for SCORE — the run total, and what the leaderboard
+           reads — and it costs gold to make. */
+        PK.UI.showToast('FLOOR CLEARED — bank it for gold, or keep dropping for score');
     }
 
     var cx = slot.x + slot.w / 2;
@@ -393,10 +428,28 @@
     G.log.push({ ball: ball.def.name, value: Math.round(ball.value), mult: ctx.mult, score: score });
     if (G.log.length > 6) G.log.shift();
 
-    persist();
+    tickRespawns();
+    /* The run is NOT saved here any more. A snapshot has no room for a ball in
+       flight, and with several allowed at once a ball landing is no longer the
+       moment the board is still — saving here would store a hand already short
+       of the balls still falling, and closing the tab would swallow them.
+       update() saves once everything has come to rest instead. */
   }
 
   function round1(v) { return Math.round(v * 10) / 10; }
+
+  /** Count every shattered peg one drop closer to coming back. */
+  function tickRespawns() {
+    if (!G.board) return;
+    G.board.pegs.forEach(function (p) {
+      if (!p.respawn) return;
+      p.respawn--;
+      if (p.respawn > 0) return;
+      p.dead = false;
+      p.hp = 0;              // a brittle peg is whole again, not one hit from breaking
+      p.flash = 1;           // so it visibly pops back rather than appearing between frames
+    });
+  }
 
   /* --------------------------------------------------------- floor result */
 
@@ -611,7 +664,11 @@
          Physics.step while the ball is still in G.balls — anything keyed on
          "the board is still", the BANK IT button above all, read as false
          there and never got another chance to update. */
-      if (settled) PK.UI.refresh();
+      if (settled) {
+        PK.UI.refresh();
+        // The board is still again: the one moment a snapshot is honest.
+        if (!G.balls.length && G.screen === 'play') persist();
+      }
     }
 
     for (i = G.popups.length - 1; i >= 0; i--) {
@@ -651,6 +708,8 @@
       return Math.max(1, Math.min(reduceHook('handSize', G.handSizeBase), MAX_HAND));
     },
     MAX_HAND: MAX_HAND,
+    MAX_IN_FLIGHT: MAX_IN_FLIGHT,
+    PEG_RESPAWN_DROPS: PEG_RESPAWN_DROPS,
     DROP_Y: DROP_Y
   };
 })(window.PK = window.PK || {});
