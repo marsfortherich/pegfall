@@ -11,6 +11,7 @@
      for a cap to announce itself. The shop now withholds the offer at the cap
      as well, so the gold is never silently wasted. */
   var MAX_HAND = 24;
+  var SHOP_SLOTS = 3;
   var DROP_Y = 76;
   /* Balls in the air at once.
 
@@ -59,6 +60,7 @@
     floorResolved: false,
     stats: null,
     shop: null,
+    locked: [],          // offers held over to the next shop
     log: []
   };
 
@@ -181,11 +183,12 @@
       board: G.board,
       stats: G.stats,
       log: G.log,
+      locked: G.locked.slice(),
       shop: G.shop ? {
         rerollCost: G.shop.rerollCost,
         gained: G.shop.gained,
         offers: G.shop.offers.map(function (o) {
-          return { kind: o.kind, id: o.id, cost: o.cost, sold: !!o.sold };
+          return { kind: o.kind, id: o.id, cost: o.cost, sold: !!o.sold, locked: !!o.locked };
         })
       } : null
     };
@@ -227,6 +230,7 @@
     G.board = d.board;
     G.stats = d.stats;
     G.log = d.log || [];
+    G.locked = d.locked || [];
     G.balls = []; G.popups = []; G.particles = [];
     G.aiming = true;
     G.shake = 0;
@@ -238,7 +242,8 @@
         rerollCost: d.shop.rerollCost,
         gained: d.shop.gained,
         offers: d.shop.offers.map(function (o) {
-          return { kind: o.kind, id: o.id, cost: o.cost, sold: o.sold, data: offerData(o.kind, o.id) };
+          return { kind: o.kind, id: o.id, cost: o.cost, sold: o.sold,
+                   locked: !!o.locked, data: offerData(o.kind, o.id) };
         }).filter(function (o) { return !!o.data; })
       };
     } else {
@@ -270,6 +275,7 @@
     G.balls = []; G.popups = []; G.particles = [];
     G.stats = { pegs: 0, bestBall: 0, dropped: 0, goldEarned: 0, runTotal: 0 };
     G.log = [];
+    G.locked = [];
     G.meta.runs++;
     PK.Save.save(G.meta);
     PK.Save.clearRun();
@@ -609,14 +615,55 @@
       if (o.kind === 'service') w = SERVICES[o.id] && SERVICES[o.id].weight || 1.5;
       return w;
     };
-    G.shop.offers = G.rng.pickWeighted(shopPool(), 3, weight).map(function (o) {
-      return Object.assign({}, o, { sold: false });
+    /* A locked offer survives a reroll and the walk to the next floor. The
+       pool is filtered by what is already on the counter so a reroll cannot
+       deal a second copy of something being held. */
+    var keep = (G.shop.offers || []).filter(function (o) { return o.locked && !o.sold; });
+    var onCounter = {};
+    keep.forEach(function (o) { onCounter[o.kind + ':' + o.id] = true; });
+
+    var pool = shopPool().filter(function (o) { return !onCounter[o.kind + ':' + o.id]; });
+    var fresh = G.rng.pickWeighted(pool, SHOP_SLOTS - keep.length, weight).map(function (o) {
+      return Object.assign({}, o, { sold: false, locked: false });
     });
+    G.shop.offers = keep.concat(fresh);
+  }
+
+  /**
+   * The held offers, rebuilt for a new shop.
+   *
+   * Checked against the live pool rather than trusted: a Bag Trim held while
+   * the bag shrank to three, or a Bigger Hands held to the cap, is something
+   * the shop would refuse to stock now and must not sneak back in through a
+   * lock. Their display data is looked up again for the same reason offers
+   * are on resume — a content change must never ship a stale description.
+   */
+  function heldOffers() {
+    if (!G.locked || !G.locked.length) return [];
+    var available = {};
+    shopPool().forEach(function (o) { available[o.kind + ':' + o.id] = o; });
+    return G.locked.map(function (o) {
+      var live = available[o.kind + ':' + o.id];
+      if (!live) return null;
+      return { kind: o.kind, id: o.id, cost: live.cost, sold: false,
+               locked: true, data: live.data };
+    }).filter(Boolean);
+  }
+
+  /** Hold an offer over, or stop holding it. Returns the new state. */
+  function toggleLock(index) {
+    var o = G.shop && G.shop.offers[index];
+    if (!o || o.sold) return false;
+    o.locked = !o.locked;
+    PK.Sfx.ui();
+    persist();
+    PK.UI.showShop();
+    return o.locked;
   }
 
   function openShop(gained) {
     G.screen = 'shop';
-    G.shop = { rerollCost: 2, gained: gained, offers: [] };
+    G.shop = { rerollCost: 2, gained: gained, offers: heldOffers() };
     rollShop();
     persist();
     PK.UI.showShop();
@@ -672,6 +719,10 @@
   }
 
   function leaveShop() {
+    /* Whatever is still locked and unsold comes with you to the next shop. */
+    G.locked = (G.shop && G.shop.offers ? G.shop.offers : [])
+      .filter(function (o) { return o.locked && !o.sold; })
+      .map(function (o) { return { kind: o.kind, id: o.id, cost: o.cost }; });
     startFloor();
   }
 
@@ -734,6 +785,7 @@
     canDrop: canDrop,
     cashOut: cashOut,
     buy: buy,
+    toggleLock: toggleLock,
     reroll: reroll,
     leaveShop: leaveShop,
     hasRelic: hasRelic,

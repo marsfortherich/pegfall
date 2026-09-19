@@ -54,9 +54,16 @@
       }
     },
     ghost: {
+      /* Phasing six pegs does not cost six pegs — it costs about 126. The
+         skipped ones are at the top, where the ball is slow and bouncing
+         most, so a Ghost arrives at the slots fast and falls almost straight
+         through: 22 peg hits against a Standard's 142. At value 26 that made
+         it score 638 where the free Standard scores 818, so floor 5 unlocked
+         a downgrade. The identity is the point of the ball, so it keeps
+         phasing six and is paid properly for it. */
       id: 'ghost', name: 'Ghost', color: '#d2a8ff', cost: 8, rarity: 'uncommon',
-      value: 26, restitution: 0.6, mass: 1, radius: 8, ghostPegs: 6,
-      desc: 'Value 26, but it phases through the first 6 pegs it meets.'
+      value: 90, restitution: 0.6, mass: 1, radius: 8, ghostPegs: 6,
+      desc: 'Value 90, but it phases through the first 6 pegs it meets.'
     },
     magnet: {
       id: 'magnet', name: 'Magnet', color: '#ffa657', cost: 9, rarity: 'rare',
@@ -113,7 +120,14 @@
       onPegHit: function (G, ball) { ball.value += 2; }
     },
     {
-      id: 'momentum', name: 'Momentum', icon: 'MO', rarity: 'uncommon', cost: 8,
+      /* Measured at +399%, or 50 score per gold of cost, against a set median
+         of 6 — eight times the next best relic. The effect compounds, so no
+         cap brings it near the curve (even +2 still sits at 14), and cutting
+         it that far would just make it a worse Peg Collector. Left intact and
+         made rare instead: it appears half as often and costs half again as
+         much, so it is the run you got lucky in rather than the one you
+         expected. */
+      id: 'momentum', name: 'Momentum', icon: 'MO', rarity: 'rare', cost: 12,
       desc: 'Each peg in a fall is worth +1 more than the last one (caps at +10).',
       onPegHit: function (G, ball) { ball.value += Math.min(ball.pegHits, 10); }
     },

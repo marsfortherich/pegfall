@@ -281,6 +281,19 @@ button.big {
 }
 .offer:hover { transform: translateY(-3px); border-color: var(--c); }
 .offer.sold { opacity: 0.42; }
+
+/* A held offer: it survives the reroll and comes with you to the next shop. */
+.offer { position: relative; }
+.offer.held { border-color: var(--gold); }
+.offer .lock {
+  position: absolute; top: 6px; right: 6px;
+  padding: 2px 5px; min-width: 0; line-height: 1;
+  font-size: 11px; background: transparent; border: 1px solid transparent;
+  box-shadow: none; opacity: 0.35;
+}
+.offer .lock:hover:not(:disabled) { opacity: 1; background: transparent; filter: none; }
+.offer .lock.on { opacity: 1; }
+.offer .lock:active:not(:disabled) { transform: none; }
 .offer .kind { font-size: 8.5px; letter-spacing: 2px; color: var(--muted); margin-bottom: 10px; }
 .offer h3 { margin: 10px 0 6px; font-size: 13.5px; color: var(--c); letter-spacing: 0.5px; }
 .offer p { font-size: 11px; line-height: 1.65; color: #a9b8ca; margin: 0 0 14px; flex: 1; }

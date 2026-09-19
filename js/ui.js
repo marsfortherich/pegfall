@@ -358,7 +358,20 @@
     var art = o.kind === 'ball'
       ? '<span class="ball-art" style="background:' + d.color + '"></span>'
       : '<span class="relic-art" style="--c:' + color + '">' + esc(d.icon || '◆') + '</span>';
-    return '<div class="offer' + (o.sold ? ' sold' : '') + '" style="--c:' + color + '">' +
+    /* The padlock holds an offer over to the next shop. It is the answer to
+       seeing something strong two gold short: you keep it instead of gambling
+       the reroll and losing it. Hidden on a sold card, where it would do
+       nothing. */
+    var lock = o.sold ? '' :
+      '<button class="lock' + (o.locked ? ' on' : '') + '" data-lock="' + i + '"' +
+      ' title="' + (o.locked ? 'Held for the next shop — click to release'
+                             : 'Hold this for the next shop') + '"' +
+      ' aria-pressed="' + (o.locked ? 'true' : 'false') + '">' +
+      (o.locked ? '🔒' : '🔓') + '</button>';
+
+    return '<div class="offer' + (o.sold ? ' sold' : '') + (o.locked ? ' held' : '') +
+      '" style="--c:' + color + '">' +
+      lock +
       '<div class="kind">' + kindLabel + '</div>' + art +
       '<h3>' + esc(d.name) + '</h3>' +
       '<p>' + esc(d.desc) + '</p>' +
@@ -389,6 +402,11 @@
 
     Array.prototype.forEach.call(el.overlay.querySelectorAll('[data-buy]'), function (btn) {
       btn.addEventListener('click', function () { PK.Game.buy(parseInt(btn.dataset.buy, 10)); });
+    });
+    Array.prototype.forEach.call(el.overlay.querySelectorAll('[data-lock]'), function (btn) {
+      btn.addEventListener('click', function () {
+        PK.Game.toggleLock(parseInt(btn.dataset.lock, 10));
+      });
     });
     $('btn-reroll').addEventListener('click', function () { PK.Game.reroll(); });
     $('btn-next').addEventListener('click', function () { hideOverlay(); PK.Game.leaveShop(); });

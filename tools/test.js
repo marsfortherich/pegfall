@@ -951,6 +951,176 @@ describe('relic prerequisites', function () {
 });
 
 /* ============================================================
+   Holding an offer over.
+
+   The answer to seeing something strong two gold short: keep
+   it rather than gamble the reroll and lose it.
+   ============================================================ */
+describe('shop: holding an offer', function () {
+  /** Park a run in the shop with gold. */
+  function shop(seed, gold) {
+    const g = run(seed || 'LOCK');
+    const G = g.PK.Game.G;
+    G.target = 1;
+    g.helpers.drop(310);
+    g.PK.Game.cashOut();
+    G.gold = gold === undefined ? 500 : gold;
+    return g;
+  }
+  const ids = function (g) { return g.PK.Game.G.shop.offers.map(function (o) { return o.id; }); };
+
+  it('toggles on and off, and reports which it did', function () {
+    const g = shop('LOCK1');
+    eq(g.PK.Game.toggleLock(0), true, 'held');
+    eq(g.PK.Game.G.shop.offers[0].locked, true);
+    eq(g.PK.Game.toggleLock(0), false, 'released');
+    eq(g.PK.Game.G.shop.offers[0].locked, false);
+  });
+
+  it('refuses an index that is not there, and a sold card', function () {
+    const g = shop('LOCK2');
+    eq(g.PK.Game.toggleLock(99), false, 'out of range');
+    eq(g.PK.Game.toggleLock(-1), false, 'negative');
+    g.PK.Game.buy(0);
+    eq(g.PK.Game.toggleLock(0), false, 'nothing to hold on a sold card');
+  });
+
+  it('a held offer survives a reroll while the rest change', function () {
+    const g = shop('LOCK3');
+    const G = g.PK.Game.G;
+    const held = G.shop.offers[0].id;
+    g.PK.Game.toggleLock(0);
+    let moved = 0;
+    for (let i = 0; i < 12; i++) {
+      const before = ids(g).slice(1);
+      G.gold = 500;
+      g.PK.Game.reroll();
+      eq(G.shop.offers.length, 3, 'still three offers');
+      eq(G.shop.offers[0].id, held, 'the held one is still there');
+      eq(G.shop.offers[0].locked, true, 'and still held');
+      if (JSON.stringify(ids(g).slice(1)) !== JSON.stringify(before)) moved++;
+    }
+    ok(moved > 0, 'the other two never changed across 12 rerolls');
+  });
+
+  it('a reroll never deals a second copy of what is held', function () {
+    const g = shop('LOCK4');
+    const G = g.PK.Game.G;
+    const held = G.shop.offers[0].id;
+    g.PK.Game.toggleLock(0);
+    for (let i = 0; i < 40; i++) {
+      G.gold = 500;
+      g.PK.Game.reroll();
+      const copies = ids(g).filter(function (id) { return id === held; }).length;
+      eq(copies, 1, 'dealt ' + copies + ' copies of ' + held);
+    }
+  });
+
+  it('a held offer comes with you to the next shop', function () {
+    const g = shop('LOCK5');
+    const G = g.PK.Game.G;
+    const held = G.shop.offers[0].id;
+    const loose = G.shop.offers[1].id;
+    g.PK.Game.toggleLock(0);
+    g.PK.Game.leaveShop();
+    deepEq(G.locked.map(function (o) { return o.id; }), [held], 'carried on the run');
+
+    // Clear the next floor to reach the next shop.
+    G.target = 1;
+    g.helpers.drop(310);
+    g.PK.Game.cashOut();
+    eq(G.screen, 'shop', 'back in a shop');
+    ok(ids(g).indexOf(held) !== -1, 'the held offer is on the counter again');
+    eq(G.shop.offers.find(function (o) { return o.id === held; }).locked, true, 'still held');
+    eq(G.shop.offers.length, 3, 'and the shop is still full');
+  });
+
+  it('an offer left unheld does not come back', function () {
+    // Not a guarantee about any single id — a loose offer may be re-rolled by
+    // chance — so this checks the bookkeeping rather than the dice.
+    const g = shop('LOCK6');
+    g.PK.Game.leaveShop();
+    deepEq(g.PK.Game.G.locked, [], 'nothing was carried');
+  });
+
+  it('buying what you held means there is nothing left to carry', function () {
+    const g = shop('LOCK7');
+    const G = g.PK.Game.G;
+    g.PK.Game.toggleLock(0);
+    eq(g.PK.Game.buy(0), true, 'bought it');
+    g.PK.Game.leaveShop();
+    deepEq(G.locked, [], 'a sold card is not carried');
+  });
+
+  it('every offer can be held, which freezes the shop', function () {
+    const g = shop('LOCK8');
+    const G = g.PK.Game.G;
+    const before = ids(g);
+    for (let i = 0; i < 3; i++) g.PK.Game.toggleLock(i);
+    G.gold = 500;
+    g.PK.Game.reroll();
+    deepEq(ids(g), before, 'a full hold leaves nothing to re-roll');
+  });
+
+  it('a held offer the shop would no longer stock is dropped', function () {
+    /* Bag Trim refuses to cut below three balls. Holding one while the bag
+       shrinks must not smuggle it back past that rule. */
+    const g = shop('LOCK9');
+    const G = g.PK.Game.G;
+    g.helpers.stockShop([
+      { kind: 'service', id: 'trim', cost: 4, sold: false, locked: true, data: { name: 'Bag Trim' } }
+    ]);
+    g.PK.Game.leaveShop();
+    deepEq(G.locked.map(function (o) { return o.id; }), ['trim'], 'carried');
+    G.bag = ['standard', 'standard', 'standard'];      // now at the floor
+    G.target = 1;
+    g.helpers.drop(310);
+    g.PK.Game.cashOut();
+    eq(ids(g).indexOf('trim'), -1, 'Bag Trim came back despite being unstockable');
+    eq(G.shop.offers.length, 3, 'and the slot was refilled');
+  });
+
+  it('a hold survives closing the tab', function () {
+    const g = shop('LOCKSAVE');
+    const G = g.PK.Game.G;
+    const held = G.shop.offers[1].id;
+    g.PK.Game.toggleLock(1);
+
+    const g2 = fresh({ storage: g.localStorage._store });
+    eq(g2.PK.Game.resumeRun(), true, 'resumed');
+    const R = g2.PK.Game.G;
+    eq(R.screen, 'shop', 'back in the shop');
+    eq(R.shop.offers[1].id, held, 'same offer');
+    eq(R.shop.offers[1].locked, true, 'still held');
+  });
+
+  it('a run saved before holding existed resumes with nothing held', function () {
+    const g = shop('LOCKOLD');
+    g.PK.Game.toggleLock(0);
+    g.PK.Game.persist();
+    const store = g.localStorage._store;
+    const saved = JSON.parse(store['pegfall.run.v1']);
+    delete saved.locked;
+    saved.shop.offers.forEach(function (o) { delete o.locked; });
+    store['pegfall.run.v1'] = JSON.stringify(saved);
+
+    const g2 = fresh({ storage: store });
+    eq(g2.PK.Game.resumeRun(), true, 'still resumable');
+    deepEq(g2.PK.Game.G.locked, [], 'nothing held');
+    eq(g2.PK.Game.G.shop.offers[0].locked, false, 'and no card claims to be');
+  });
+
+  it('a new run starts with nothing held over from the last', function () {
+    const g = shop('LOCKRESET');
+    g.PK.Game.toggleLock(0);
+    g.PK.Game.leaveShop();
+    ok(g.PK.Game.G.locked.length, 'something was held');
+    g.PK.Game.newRun('LOCKRESET2');
+    deepEq(g.PK.Game.G.locked, [], 'a fresh run starts clean');
+  });
+});
+
+/* ============================================================
    Persistence.
 
    Two keys, deliberately: a corrupt run must never take the meta
