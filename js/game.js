@@ -12,14 +12,20 @@
      as well, so the gold is never silently wasted. */
   var MAX_HAND = 24;
   var DROP_Y = 76;
-  /* How many balls may be in the air at once.
+  /* Balls in the air at once.
 
-     The engine already handled several — Multiball has always spawned a
-     second one — so this only lifts the gate that stopped the player doing
-     it deliberately. Capped rather than unlimited because the whole hand
-     dumped at once stops being aiming and starts being a coin flip; this is
-     the one number to turn if it wants to feel wilder. */
-  var MAX_IN_FLIGHT = 3;
+     A run starts at one, which is how the game has always played, and buys
+     its way up one ball at a time in the shop. Handing every run three from
+     the start made the opening floors louder without the player having chosen
+     anything; earning them turns the carnage into a build decision, and a
+     late run that has bought enough can throw its whole hand at the board.
+
+     The ceiling is MAX_HAND for exactly that reason — there is no point being
+     able to throw more balls at once than a floor will ever deal you. The
+     engine itself never needed a limit: Multiball has always put a second ball
+     in play, and physics steps each one independently. */
+  var BASE_IN_FLIGHT = 1;
+  var MAX_IN_FLIGHT = MAX_HAND;
   /* How many landings a shattered peg counts down before it returns.
 
      Destroying pegs already paid — the Bomb ball is the strongest in the game
@@ -43,7 +49,7 @@
     meta: null,
     rng: null, seed: '',
     floor: 0, target: 0, score: 0, gold: 0,
-    bag: [], hand: [], handSizeBase: BASE_HAND,
+    bag: [], hand: [], handSizeBase: BASE_HAND, inFlightBase: BASE_IN_FLIGHT,
     relics: [],
     board: null, modifier: null,
     balls: [], popups: [], particles: [],
@@ -165,6 +171,7 @@
       relics: G.relics.slice(),
       hand: G.hand.slice(),
       handSizeBase: G.handSizeBase,
+      inFlightBase: G.inFlightBase,
       carryScore: G.carryScore,
       carryValue: G.carryValue,
       dropIndex: G.dropIndex,
@@ -208,6 +215,9 @@
     G.relics = d.relics;
     G.hand = d.hand;
     G.handSizeBase = d.handSizeBase;
+    /* A run saved before Juggling existed has no field here; it resumes on one
+       ball, which is what it was being played with. */
+    G.inFlightBase = d.inFlightBase || BASE_IN_FLIGHT;
     G.carryScore = d.carryScore || 0;
     G.carryValue = d.carryValue || 0;
     G.dropIndex = d.dropIndex || 0;
@@ -255,6 +265,7 @@
     G.bag = ['standard', 'standard', 'standard', 'standard', 'standard', 'standard', 'bouncy', 'heavy'];
     G.relics = [];
     G.handSizeBase = BASE_HAND;
+    G.inFlightBase = BASE_IN_FLIGHT;
     G.carryScore = 0;
     G.balls = []; G.popups = []; G.particles = [];
     G.stats = { pegs: 0, bestBall: 0, dropped: 0, goldEarned: 0, runTotal: 0 };
@@ -336,9 +347,14 @@
 
   /* ---------------------------------------------------------------- drops */
 
+  /** How many balls this run may have in the air at once. */
+  function inFlight() {
+    return Math.max(1, Math.min(G.inFlightBase, MAX_IN_FLIGHT));
+  }
+
   function canDrop() {
     return G.screen === 'play' && !G.floorResolved && G.hand.length > 0 &&
-      G.balls.length < MAX_IN_FLIGHT;
+      G.balls.length < inFlight();
   }
 
   function dropBall(x) {
@@ -543,6 +559,9 @@
      kind + id + cost, and its display data is looked up again on load. */
   var SERVICES = {
     hand: { cost: 11, data: { name: 'Bigger Hands', rarity: 'rare', desc: 'Permanently draw +1 ball every floor.' } },
+    /* Cheap and repeatable on purpose: the first one is an easy yes, and a run
+       that keeps buying ends up hurling the whole hand at once. */
+    juggle: { cost: 5, weight: 6, data: { name: 'Juggling', rarity: 'common', desc: 'Permanently drop +1 ball at a time, without waiting for the last to land.' } },
     trim: { cost: 4, data: { name: 'Bag Trim', rarity: 'common', desc: 'Remove a Standard ball from the bag, or your lowest-value ball if none are left.' } },
     gild: { cost: 7, data: { name: 'Gilding', rarity: 'uncommon', desc: 'Upgrade one Standard ball into a random unlocked type.' } }
   };
@@ -570,6 +589,7 @@
     Object.keys(SERVICES).forEach(function (id) {
       // Never sell something that cannot do anything.
       if (id === 'hand' && G.handSizeBase >= MAX_HAND) return;
+      if (id === 'juggle' && G.inFlightBase >= MAX_IN_FLIGHT) return;
       if (id === 'trim' && G.bag.length <= 3) return;
       if (id === 'gild' && G.bag.indexOf('standard') === -1) return;
       var sv = SERVICES[id];
@@ -582,7 +602,11 @@
     var weight = function (o) {
       var r = (o.data.rarity || 'common');
       var w = r === 'common' ? 3 : r === 'uncommon' ? 2 : 1;
-      if (o.kind === 'service') w = 1.5;
+      /* Services default to 1.5 regardless of rarity, but one may declare its
+         own. Juggling does: it is the run's only way to turn gold into a bigger
+         volley, and at the flat rate it appeared in 8% of shops, which left 79%
+         of runs never seeing a second ball at all. */
+      if (o.kind === 'service') w = SERVICES[o.id] && SERVICES[o.id].weight || 1.5;
       return w;
     };
     G.shop.offers = G.rng.pickWeighted(shopPool(), 3, weight).map(function (o) {
@@ -611,6 +635,8 @@
       G.bag.push(o.id);
     } else if (o.id === 'hand') {
       G.handSizeBase++;
+    } else if (o.id === 'juggle') {
+      G.inFlightBase++;
     } else if (o.id === 'trim') {
       /* Thinning the bag is about removing filler so the interesting balls come
          up more often. Ranking purely by value did the opposite: Void is worth
@@ -719,8 +745,11 @@
     handSize: function () {
       return Math.max(1, Math.min(reduceHook('handSize', G.handSizeBase), MAX_HAND));
     },
+    inFlight: inFlight,
     MAX_HAND: MAX_HAND,
+    SERVICES: SERVICES,
     MAX_IN_FLIGHT: MAX_IN_FLIGHT,
+    BASE_IN_FLIGHT: BASE_IN_FLIGHT,
     PEG_RESPAWN_DROPS: PEG_RESPAWN_DROPS,
     DROP_Y: DROP_Y
   };

@@ -419,39 +419,67 @@ describe('run', function () {
     eq(g.PK.Game.canDrop(), false, 'cannot drop with an empty hand');
   });
 
-  it('a volley of balls can be in the air at once, up to the cap', function () {
+  it('a fresh run drops one ball at a time', function () {
+    const g = run('SOLO');
+    const G = g.PK.Game.G;
+    eq(G.inFlightBase, g.PK.Game.BASE_IN_FLIGHT, 'starts at the base');
+    eq(g.PK.Game.inFlight(), 1, 'one at a time');
+    g.PK.Game.dropBall(310);
+    eq(G.balls.length, 1);
+    eq(g.PK.Game.canDrop(), false, 'the board is busy until it lands');
+    g.PK.Game.dropBall(310);
+    eq(G.balls.length, 1, 'the second drop was refused');
+    eq(G.hand.length, 5, 'and cost nothing from the hand');
+  });
+
+  it('a bought volley lets that many fly at once', function () {
     const g = run('VOLLEY');
     const G = g.PK.Game.G;
-    const cap = g.PK.Game.MAX_IN_FLIGHT;
-    ok(cap > 1, 'multi-drop is on');
-    for (let i = 0; i < cap; i++) {
+    G.inFlightBase = 3;
+    for (let i = 0; i < 3; i++) {
       eq(g.PK.Game.canDrop(), true, 'should still accept ball ' + (i + 1));
       g.PK.Game.dropBall(250 + i * 30);
     }
-    eq(G.balls.length, cap, 'all of them are in the air');
-    eq(G.hand.length, 6 - cap, 'and all came out of the hand');
-  });
-
-  it('the cap is enforced rather than advisory', function () {
-    const g = run('CAP2');
-    const G = g.PK.Game.G;
-    const cap = g.PK.Game.MAX_IN_FLIGHT;
-    for (let i = 0; i < cap; i++) g.PK.Game.dropBall(300);
-    eq(g.PK.Game.canDrop(), false, 'full');
+    eq(G.balls.length, 3, 'all three in the air');
+    eq(G.hand.length, 3, 'and all three came out of the hand');
+    eq(g.PK.Game.canDrop(), false, 'full at the bought size');
     g.PK.Game.dropBall(300);
-    eq(G.balls.length, cap, 'the extra drop was refused');
-    eq(G.hand.length, 6 - cap, 'and cost no ball from the hand');
+    eq(G.balls.length, 3, 'the extra drop was refused');
+    eq(G.hand.length, 3, 'and cost no ball from the hand');
   });
 
   it('every ball of a volley lands and scores', function () {
     const g = run('VOLLEYLAND');
     const G = g.PK.Game.G;
-    const cap = g.PK.Game.MAX_IN_FLIGHT;
-    for (let i = 0; i < cap; i++) g.PK.Game.dropBall(220 + i * 45);
+    G.inFlightBase = 3;
+    for (let i = 0; i < 3; i++) g.PK.Game.dropBall(220 + i * 45);
     g.helpers.settle();
     eq(G.balls.length, 0, 'the board came to rest');
-    eq(G.stats.dropped, cap, 'all counted');
-    eq(G.log.length, cap, 'each one logged');
+    eq(G.stats.dropped, 3, 'all counted');
+    eq(G.log.length, 3, 'each one logged');
+  });
+
+  it('a big enough volley can throw the whole hand at once', function () {
+    // The ceiling is MAX_HAND precisely so this is reachable.
+    const g = run('WHOLEHAND');
+    const G = g.PK.Game.G;
+    G.inFlightBase = g.PK.Game.MAX_IN_FLIGHT;
+    const hand = G.hand.length;
+    for (let i = 0; i < hand; i++) g.PK.Game.dropBall(180 + i * 40);
+    eq(G.balls.length, hand, 'the entire hand is in the air');
+    eq(G.hand.length, 0, 'nothing left to throw');
+    g.helpers.settle();
+    eq(G.balls.length, 0, 'and all of them resolved');
+    eq(G.stats.dropped, hand, 'all counted');
+  });
+
+  it('inFlight() never reports less than one or more than the ceiling', function () {
+    const g = run('CLAMPFLIGHT');
+    const G = g.PK.Game.G;
+    G.inFlightBase = 0;
+    eq(g.PK.Game.inFlight(), 1, 'a broken save cannot stop the game dead');
+    G.inFlightBase = 9999;
+    eq(g.PK.Game.inFlight(), g.PK.Game.MAX_IN_FLIGHT, 'clamped to the ceiling');
   });
 
   it('missing the target ends the run and posts nothing twice', function () {
@@ -679,6 +707,64 @@ describe('shop', function () {
       G.shop.offers.forEach(function (o) {
         ok(!(o.kind === 'service' && o.id === 'hand'), 'Bigger Hands offered at the cap');
         ok(!(o.kind === 'service' && o.id === 'trim'), 'Bag Trim offered at the bag floor');
+      });
+    }
+  });
+
+  it('Juggling raises the volley by one, and can be bought again', function () {
+    const g = shopping('JUGGLE', 500);
+    const G = g.PK.Game.G;
+    eq(g.PK.Game.inFlight(), 1, 'a run starts on one');
+    // A fresh offer each time: buy() marks the one it sold, so reusing the
+    // object would just be refused as already sold.
+    const offer = function () {
+      return { kind: 'service', id: 'juggle', cost: 5, sold: false, data: { name: 'Juggling' } };
+    };
+    g.helpers.stockShop([offer()]);
+    eq(g.PK.Game.buy(0), true, 'bought');
+    eq(g.PK.Game.inFlight(), 2, 'two at a time');
+    g.helpers.stockShop([offer()]);
+    eq(g.PK.Game.buy(0), true, 'bought again');
+    eq(g.PK.Game.inFlight(), 3, 'three at a time — it stacks');
+  });
+
+  it('Juggling is cheap, and offered often enough to build around', function () {
+    /* Both halves matter. It has to be an easy first yes — a floor pays 4-8
+       gold — and it has to actually turn up: at the flat service weight it
+       appeared in 8% of shops, which left 79% of runs never seeing a second
+       ball at all. The threshold here is deliberately far below the measured
+       rate (~28% of shops) so it fails on a real regression, not on variance. */
+    const g = shopping('JUGGLERATE', 500);
+    const G = g.PK.Game.G;
+    let shops = 0, seen = 0, cost = null;
+    for (let i = 0; i < 200; i++) {
+      G.gold = 500;
+      g.PK.Game.reroll();
+      shops++;
+      const o = G.shop.offers.find(function (x) { return x.id === 'juggle'; });
+      if (o) { seen++; cost = o.cost; }
+    }
+    ok(seen > 20, 'Juggling appeared in only ' + seen + ' of ' + shops + ' shops');
+    ok(cost <= 6, 'Juggling costs ' + cost + ', which is not cheap');
+  });
+
+  it('a service can declare its own shop weight', function () {
+    const g = fresh();
+    eq(typeof g.PK.Game.SERVICES.juggle.weight, 'number', 'Juggling declares one');
+    ok(g.PK.Game.SERVICES.juggle.weight > 1.5, 'and it beats the 1.5 default');
+    eq(g.PK.Game.SERVICES.trim.weight, undefined, 'the others still take the default');
+  });
+
+  it('the shop stops offering Juggling at the ceiling', function () {
+    const g = shopping('JUGGLECAP', 500);
+    const G = g.PK.Game.G;
+    G.inFlightBase = g.PK.Game.MAX_IN_FLIGHT;
+    for (let i = 0; i < 60; i++) {
+      G.gold = 500;
+      g.PK.Game.reroll();
+      G.shop.offers.forEach(function (o) {
+        ok(!(o.kind === 'service' && o.id === 'juggle'),
+          'Juggling offered at the ceiling — the gold would be wasted');
       });
     }
   });
@@ -1016,6 +1102,35 @@ describe('save: the resumable run', function () {
     eq(g2.bus.screen, 'shop', 'the shop screen was shown');
   });
 
+  it('a bought volley survives a resume', function () {
+    const g = run('JUGGLESAVE');
+    const G = g.PK.Game.G;
+    G.inFlightBase = 4;
+    g.PK.Game.persist();
+    eq(g.helpers.savedRun().inFlightBase, 4, 'written to disk');
+
+    const g2 = fresh({ storage: g.localStorage._store });
+    eq(g2.PK.Game.resumeRun(), true, 'resumed');
+    eq(g2.PK.Game.G.inFlightBase, 4, 'and the run can still throw four');
+  });
+
+  it('a run saved before Juggling existed resumes on one ball', function () {
+    /* The field was added without bumping RUN_VERSION, so older saves stay
+       playable — they simply come back the way they were being played. */
+    const g = run('OLDSAVE');
+    g.PK.Game.G.inFlightBase = 5;
+    g.PK.Game.persist();
+    const store = g.localStorage._store;
+    const saved = JSON.parse(store['pegfall.run.v1']);
+    delete saved.inFlightBase;                      // as an older build wrote it
+    store['pegfall.run.v1'] = JSON.stringify(saved);
+
+    const g2 = fresh({ storage: store });
+    eq(g2.PK.Game.resumeRun(), true, 'still resumable');
+    eq(g2.PK.Game.G.inFlightBase, g2.PK.Game.BASE_IN_FLIGHT, 'back to one');
+    eq(g2.PK.Game.inFlight(), 1);
+  });
+
   it('a run saved by an older build is dropped, not half-restored', function () {
     const g = fresh({ storage: { 'pegfall.run.v1': JSON.stringify({ v: 0, seed: 'OLD', floor: 4 }) } });
     eq(g.PK.Save.loadRun(), null, 'version mismatch rejected');
@@ -1051,7 +1166,8 @@ describe('save: the resumable run', function () {
        the board to be still, so an interrupted volley rewinds to before it. */
     const g = run('VOLLEYSAVE');
     const G = g.PK.Game.G;
-    const cap = g.PK.Game.MAX_IN_FLIGHT;
+    G.inFlightBase = 3;
+    const cap = 3;
 
     g.helpers.drop(310);                       // one clean drop, so a save exists
     const onDisk = g.helpers.savedRun();

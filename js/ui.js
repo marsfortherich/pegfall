@@ -321,8 +321,9 @@
       '<div class="card menu help">' +
       '<h2 class="ovh">HOW TO PLAY</h2>' +
       '<div class="helpbody">' +
-      '<p><b>Drop a ball.</b> Click the board to aim; it falls where you point. You can have ' +
-      'up to three in the air at once — keep clicking.</p>' +
+      '<p><b>Drop a ball.</b> Click the board to aim; it falls where you point. One at a time ' +
+      'to begin with — buy <b>Juggling</b> in the shop and you can keep clicking without ' +
+      'waiting for the last ball to land.</p>' +
       '<p><b>Pegs feed it.</b> A ball starts at its type’s value and grows with every peg it ' +
       'clips. Gold pegs add a lot, charged pegs add to the slot multiplier, bumpers kick it ' +
       'sideways, brittle pegs break for a bonus. A shattered peg grows back a drop later, so ' +
@@ -382,7 +383,8 @@
       '<button class="big" id="btn-next">To floor ' + (G.floor + 1) + ' →</button>' +
       '</div>' +
       '<div class="shopbag"><b>Bag:</b> ' + bagSummary() + ' &nbsp;·&nbsp; <b>Hand:</b> ' +
-      PK.Game.handSize() + ' balls</div>' +
+      PK.Game.handSize() + ' balls &nbsp;·&nbsp; <b>At once:</b> ' +
+      PK.Game.inFlight() + '</div>' +
       '</div>', false);
 
     Array.prototype.forEach.call(el.overlay.querySelectorAll('[data-buy]'), function (btn) {
