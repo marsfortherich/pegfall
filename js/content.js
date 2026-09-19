@@ -233,6 +233,44 @@
       handSize: function (G, n) { return n + 2; },
       shuffleSlots: true
     },
+    /* ---- upgrades -------------------------------------------------------
+       Each needs the relic it improves; the shop will not offer it otherwise.
+       They stack with their base rather than replacing it — convertPegs only
+       ever converts pegs that are still 'normal', so holding both Gold Rush
+       and Mother Lode gilds 12% and then 30% of what is left. */
+    {
+      id: 'mother_lode', name: 'Mother Lode', icon: 'ML', rarity: 'rare', cost: 12,
+      requires: 'gold_rush',
+      desc: 'Needs Gold Rush. A further 30% of pegs turn golden each floor.',
+      onFloorStart: function (G, board, api) { api.convertPegs(board, 'gold', 0.30); }
+    },
+    {
+      id: 'overload', name: 'Overload', icon: 'OL', rarity: 'rare', cost: 9,
+      requires: 'live_wire',
+      desc: 'Needs Live Wire. A further 30% of pegs become charged.',
+      onFloorStart: function (G, board, api) { api.convertPegs(board, 'charged', 0.30); }
+    },
+
+    /* ---- high risk, high reward ---------------------------------------- */
+    {
+      id: 'the_deep', name: 'The Deep', icon: 'TD', rarity: 'rare', cost: 10,
+      desc: 'A deeper board: one extra row, and every peg is worth +1 more. But one slot is a void every floor.',
+      extraRows: 1,
+      onPegHit: function (G, ball) { ball.value += 1; },
+      onFloorStart: function (G, board, api) {
+        /* Never the outermost pair, matching the Void Slot modifier: those are
+           the 10x slots, and a narrowed board hides them anyway, which would
+           spend the drawback on a slot nobody could reach. */
+        var pick = [];
+        for (var i = 1; i < board.slots.length - 1; i++) {
+          if (!board.slots[i].voided) pick.push(board.slots[i]);
+        }
+        if (!pick.length) return;
+        var s = G.rng.pick(pick);
+        s.mult = 0;
+        s.voided = true;
+      }
+    },
     {
       id: 'iron_lung', name: 'Iron Lung', icon: 'IL', rarity: 'uncommon', cost: 7,
       desc: 'Each ball passes 35% of its final value on to the next ball.',

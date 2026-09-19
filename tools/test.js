@@ -718,6 +718,153 @@ describe('shop', function () {
 });
 
 /* ============================================================
+   Relics that reshape the board.
+
+   Two capabilities the hook surface gained: a relic may add peg
+   rows (only modifiers could), and a relic may require another
+   relic before the shop will offer it.
+   ============================================================ */
+describe('board-shaping relics', function () {
+  const g0 = fresh();
+  /** Start a run holding `ids`, so the first floor is built with them. */
+  function runWith(seed, ids) {
+    const g = fresh();
+    g.PK.Game.newRun(seed);
+    const G = g.PK.Game.G;
+    G.relics = ids.slice();
+    // Rebuild floor 1 now that the relics are held.
+    G.floor = 0;
+    g.PK.Game.leaveShop();
+    return g;
+  }
+
+  it('a relic with extraRows actually deepens the board', function () {
+    const plain = runWith('ROWS', []);
+    const deep = runWith('ROWS', ['the_deep']);
+    const a = plain.PK.Game.G.board, b = deep.PK.Game.G.board;
+    eq(b.rows, a.rows + 1, 'one more row');
+    ok(b.pegs.length > a.pegs.length, 'and more pegs: ' + a.pegs.length + ' -> ' + b.pegs.length);
+  });
+
+  it('a relic and a modifier both adding rows stack', function () {
+    /* Driven through real floors rather than by assigning G.modifier, because
+       startFloor() calls pickModifier() itself and would overwrite it. Play
+       on until Dense Forest (+2 rows) actually comes up while The Deep (+1) is
+       held, then check the board got both. */
+    const dense = g0.PK.MODIFIERS.find(function (m) { return m.id === 'dense'; });
+    ok(dense && dense.extraRows === 2, 'Dense Forest is still the +2 modifier');
+
+    let found = null;
+    for (let s = 0; s < 40 && !found; s++) {
+      const g = runWith('ROWSTACK' + s, ['the_deep']);
+      const G = g.PK.Game.G;
+      for (let f = 0; f < 10; f++) {
+        if (G.modifier && G.modifier.id === 'dense') { found = G; break; }
+        G.target = 1;
+        g.helpers.drop(310);
+        g.PK.Game.cashOut();
+        g.PK.Game.leaveShop();
+      }
+    }
+    ok(found, 'Dense Forest never came up in 40 seeds — stacking is untested');
+    // 11 base + 1 from The Deep + 2 from Dense Forest.
+    eq(found.board.rows, 14, 'the modifier and the relic both counted');
+  });
+
+  it('The Deep voids exactly one slot, and never an outer one', function () {
+    for (let i = 0; i < 25; i++) {
+      const g = runWith('VOID' + i, ['the_deep']);
+      const slots = g.PK.Game.G.board.slots;
+      const voided = slots.filter(function (s) { return s.voided; });
+      eq(voided.length, 1, 'seed ' + i + ': one void');
+      eq(voided[0].mult, 0, 'a void pays nothing');
+      const idx = slots.indexOf(voided[0]);
+      ok(idx > 0 && idx < slots.length - 1, 'seed ' + i + ': voided an outer slot (' + idx + ')');
+    }
+  });
+
+  it('holding The Deep does not stop a floor being cleared', function () {
+    const g = runWith('DEEPPLAY', ['the_deep']);
+    const G = g.PK.Game.G;
+    G.target = 1;
+    g.helpers.drop(310);
+    g.PK.Game.cashOut();
+    eq(G.screen, 'shop', 'the floor resolved normally');
+  });
+});
+
+describe('relic prerequisites', function () {
+  function shopping(seed, relics, gold) {
+    const g = fresh();
+    g.PK.Game.newRun(seed);
+    const G = g.PK.Game.G;
+    G.relics = (relics || []).slice();
+    G.target = 1;
+    g.helpers.drop(310);
+    g.PK.Game.cashOut();
+    G.gold = gold === undefined ? 500 : gold;
+    return g;
+  }
+
+  /** Every relic id the shop will offer across many rerolls. */
+  function offerable(g, tries) {
+    const seen = {};
+    const G = g.PK.Game.G;
+    for (let i = 0; i < (tries || 60); i++) {
+      G.gold = 500;
+      g.PK.Game.reroll();
+      G.shop.offers.forEach(function (o) { if (o.kind === 'relic') seen[o.id] = true; });
+    }
+    return seen;
+  }
+
+  it('an upgrade is never offered without the relic it upgrades', function () {
+    const g = shopping('PREREQ', []);
+    const seen = offerable(g);
+    eq(seen.mother_lode, undefined, 'Mother Lode offered without Gold Rush');
+    eq(seen.overload, undefined, 'Overload offered without Live Wire');
+  });
+
+  it('it becomes offerable once the base relic is held', function () {
+    const g = shopping('PREREQ2', ['gold_rush']);
+    const seen = offerable(g, 120);
+    ok(seen.mother_lode, 'Mother Lode never appeared despite holding Gold Rush');
+    eq(seen.overload, undefined, 'Overload still needs Live Wire');
+  });
+
+  it('a relic with no prerequisite is unaffected', function () {
+    const g = shopping('PREREQ3', []);
+    const seen = offerable(g, 120);
+    ok(Object.keys(seen).length > 5, 'the pool is still full: ' + Object.keys(seen).length);
+    ok(seen.the_deep, 'The Deep has no prerequisite and should appear');
+  });
+
+  it('every `requires` names a relic that exists', function () {
+    const g = fresh();
+    g.PK.RELICS.forEach(function (r) {
+      if (!r.requires) return;
+      ok(g.PK.RELIC_BY_ID[r.requires],
+        r.id + ' requires a relic that does not exist: ' + r.requires);
+      ok(r.requires !== r.id, r.id + ' requires itself');
+    });
+  });
+
+  it('no prerequisite chain can deadlock a relic out of the pool', function () {
+    // Every requirement must itself be reachable: no cycles, no orphans.
+    const g = fresh();
+    g.PK.RELICS.forEach(function (r) {
+      const seen = {};
+      let cur = r;
+      while (cur && cur.requires) {
+        ok(!seen[cur.id], 'cycle through ' + cur.id);
+        seen[cur.id] = true;
+        cur = g.PK.RELIC_BY_ID[cur.requires];
+      }
+    });
+  });
+});
+
+/* ============================================================
    Persistence.
 
    Two keys, deliberately: a corrupt run must never take the meta

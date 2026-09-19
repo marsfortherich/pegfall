@@ -282,7 +282,14 @@
 
     var mod = G.modifier;
     if (mod && mod.boss) PK.Sfx.boss();
-    var board = PK.Board.make(G, G.rng, { extraRows: (mod && mod.extraRows) || 0 });
+    /* Rows come from relics as well as from the floor modifier. hookSources()
+       already returns both, and this is the same collection the gravityMul
+       loop below does — extraRows just has to be counted before the board is
+       built rather than after. Nothing existing changes: no relic carried an
+       extraRows until now, and a modifier that does still contributes its own. */
+    var extraRows = 0;
+    hookSources().forEach(function (src) { extraRows += src.extraRows || 0; });
+    var board = PK.Board.make(G, G.rng, { extraRows: extraRows });
 
     // Relic + modifier slot rewrites
     var mults = board.slots.map(function (s) { return s.mult; });
@@ -549,7 +556,12 @@
   function shopPool() {
     var offers = [];
     PK.RELICS.forEach(function (r) {
-      if (G.relics.indexOf(r.id) === -1) offers.push({ kind: 'relic', id: r.id, data: r, cost: r.cost });
+      if (G.relics.indexOf(r.id) !== -1) return;
+      /* An upgrade is only offered once you hold the thing it upgrades, so the
+         run that has committed to gold pegs is the one that gets shown Mother
+         Lode. It is what turns a pile of relics into a build. */
+      if (r.requires && G.relics.indexOf(r.requires) === -1) return;
+      offers.push({ kind: 'relic', id: r.id, data: r, cost: r.cost });
     });
     PK.Save.unlockedBalls(G.meta).forEach(function (id) {
       var b = PK.BALLS[id];

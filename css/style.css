@@ -176,9 +176,21 @@ button {
 }
 button:hover:not(:disabled) { background: #1f2a3a; border-color: #3a4a60; transform: translateY(-1px); }
 button:disabled { opacity: 0.4; cursor: not-allowed; }
+/* The primary action — CONTINUE, START RUN, the shop's exit.
+
+   It used to ramp --cool into --rare. Those are the game's *rarity* colours:
+   PK.RARITY_COLOR maps uncommon onto #79c0ff and rare onto #d2a8ff, exactly
+   those two. So the largest button on the screen was painted in a vocabulary
+   that means something specific everywhere else it appears, which is what made
+   it read as off-palette rather than merely blue.
+
+   It now uses the same recipe as every primary button in the arcade — a
+   vertical ramp from --ac-accent to --ac-accent-deep — and PEGFALL's accent is
+   already declared as #79c0ff in shared/css/arcade.css. The button barely
+   changes colour; it just stops borrowing a meaning. */
 button.big {
-  background: linear-gradient(90deg, var(--cool), var(--rare));
-  color: #0b0f16; font-weight: 700; border: none;
+  background: linear-gradient(180deg, var(--ac-accent), var(--ac-accent-deep));
+  color: var(--ac-accent-ink); font-weight: 700; border: none;
 }
 .cashout {
   margin-left: auto;
