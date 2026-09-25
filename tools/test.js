@@ -30,6 +30,11 @@ function eq(actual, expected, what) {
   }
 }
 function ok(cond, what) { if (!cond) throw new Error(what || 'expected truthy'); }
+function near(actual, expected, tol, what) {
+  if (Math.abs(actual - expected) > (tol || 1e-9)) {
+    throw new Error((what ? what + ': ' : '') + 'expected ~' + expected + ', got ' + actual);
+  }
+}
 function deepEq(a, b, what) { eq(JSON.stringify(a), JSON.stringify(b), what); }
 
 /* ---------- fixtures ---------- */
@@ -570,6 +575,401 @@ describe('run', function () {
     g.PK.Game.cashOut();
     g.PK.Game.leaveShop();
     eq(G.hand.length, g.PK.Game.MAX_HAND, 'the deal matches the promise');
+  });
+});
+
+/* ============================================================
+   The Descent ladder and the win.
+
+   PEGFALL had neither: one difficulty and nothing to beat.
+   ============================================================ */
+describe('descents', function () {
+  const g0 = fresh();
+
+  it('is a cumulative ladder of eight, sharing the arcade colour order', function () {
+    const S = g0.PK.STAKES;
+    eq(S.length, 8, 'eight rungs like the other two games');
+    deepEq(S.map(function (s) { return s.id; }),
+      ['white', 'red', 'green', 'black', 'blue', 'purple', 'orange', 'gold']);
+    S.forEach(function (s, i) {
+      eq(s.level, i + 1, s.id + ' level');
+      ok(s.name && s.desc && s.color, s.id + ' is presentable');
+    });
+  });
+
+  it('level 1 changes nothing', function () {
+    const m = g0.PK.stakeMods(1);
+    eq(m.targetMul, 1); eq(m.priceMul, 1); eq(m.goldFlat, 0);
+    eq(m.hand, 0); eq(m.rerollStep, 1); eq(m.startGold, null);
+  });
+
+  /* Expectations are derived from the table rather than restated, so tuning a
+     rung is a one-place change. These test the merge, not the numbers. */
+  function declared(level, key) {
+    return g0.PK.STAKES[level - 1].mods[key];
+  }
+
+  it('a higher level carries every rung below it', function () {
+    // Whatever each rung declares must still be in force at the top.
+    const top = g0.PK.stakeMods(g0.PK.STAKES.length);
+    g0.PK.STAKES.forEach(function (s) {
+      if (s.mods.goldFlat !== undefined) ok(top.goldFlat <= s.mods.goldFlat, s.id + ' goldFlat');
+      if (s.mods.hand !== undefined) ok(top.hand <= s.mods.hand, s.id + ' hand');
+      if (s.mods.priceMul !== undefined) ok(top.priceMul >= s.mods.priceMul, s.id + ' priceMul');
+      if (s.mods.startGold !== undefined) eq(top.startGold, s.mods.startGold, s.id + ' startGold');
+      if (s.mods.modifierFloor !== undefined) eq(top.modifierFloor, s.mods.modifierFloor, s.id + ' modifierFloor');
+    });
+    const everyTarget = g0.PK.STAKES.reduce(function (acc, s) {
+      return acc * (s.mods.targetMul || 1);
+    }, 1);
+    near(top.targetMul, everyTarget, 1e-9, 'every target rung is in force at the top');
+  });
+
+  it('multipliers compound rather than replace', function () {
+    const expect = declared(3, 'targetMul') * declared(6, 'targetMul');
+    near(g0.PK.stakeMods(6).targetMul, expect, 1e-9, 'Green then Purple');
+    ok(g0.PK.stakeMods(6).targetMul > g0.PK.stakeMods(3).targetMul,
+      'Purple must be strictly harder than Green');
+  });
+
+  it('every rung above the first actually changes something', function () {
+    g0.PK.STAKES.forEach(function (s) {
+      if (s.level === 1) { deepEq(s.mods, {}, 'the base rung is the base game'); return; }
+      ok(Object.keys(s.mods).length > 0, s.id + ' is decoration');
+    });
+  });
+
+  it('the ladder only ever gets harder, rung by rung', function () {
+    for (let n = 2; n <= g0.PK.STAKES.length; n++) {
+      const lo = g0.PK.stakeMods(n - 1), hi = g0.PK.stakeMods(n);
+      ok(hi.targetMul >= lo.targetMul, 'targets eased at ' + n);
+      ok(hi.priceMul >= lo.priceMul, 'prices eased at ' + n);
+      ok(hi.hand <= lo.hand, 'hand grew at ' + n);
+      ok(hi.goldFlat <= lo.goldFlat, 'payout grew at ' + n);
+    }
+  });
+
+  it('clamps a nonsense level instead of throwing', function () {
+    deepEq(g0.PK.stakeMods(0), g0.PK.stakeMods(1), 'below the ladder');
+    deepEq(g0.PK.stakeMods(99), g0.PK.stakeMods(8), 'above it');
+    eq(g0.PK.stakeByLevel(0).id, 'white');
+    eq(g0.PK.stakeByLevel(99).id, 'gold');
+  });
+
+  it('newRun clamps the stake it is handed', function () {
+    const g = fresh();
+    g.PK.Game.newRun('S', 99);
+    eq(g.PK.Game.G.stake, 8, 'clamped to the top rung');
+    g.PK.Game.newRun('S', 0);
+    eq(g.PK.Game.G.stake, 1, 'and to the bottom');
+    g.PK.Game.newRun('S');
+    eq(g.PK.Game.G.stake, 1, 'defaults to the base Descent');
+  });
+
+  /* These look the rung up by the lever it declares rather than by colour, so
+     re-ordering the ladder — which happened once already when the economy
+     rungs turned out to compound too hard — does not silently stop testing
+     the thing it names. */
+  function rungDeclaring(key) {
+    for (var i = 0; i < g0.PK.STAKES.length; i++) {
+      if (Object.prototype.hasOwnProperty.call(g0.PK.STAKES[i].mods, key)) return g0.PK.STAKES[i];
+    }
+    return null;
+  }
+
+  it('a target rung raises the floor target', function () {
+    const r = rungDeclaring('targetMul');
+    ok(r, 'some rung raises targets');
+    const a = fresh(); a.PK.Game.newRun('TGT', r.level - 1);
+    const b = fresh(); b.PK.Game.newRun('TGT', r.level);
+    ok(b.PK.Game.G.target > a.PK.Game.G.target,
+      r.name + ': ' + a.PK.Game.G.target + ' -> ' + b.PK.Game.G.target);
+  });
+
+  it('the hand rung deals one ball fewer, and handSize() says so', function () {
+    const r = rungDeclaring('hand');
+    ok(r, 'some rung costs you a ball');
+    /* Isolated on the modifier rather than the dealt hand: the rung that costs
+       a ball may also be the one that starts the floor modifiers early, and
+       Short Hand takes two more, so comparing dealt hands measures both. */
+    eq(g0.PK.stakeMods(r.level).hand, g0.PK.stakeMods(r.level - 1).hand - 1,
+      r.name + ' costs exactly one ball');
+    // And whatever else is going on, the deal must match what handSize() promised.
+    const b = fresh(); b.PK.Game.newRun('HND', r.level);
+    eq(b.PK.Game.G.hand.length, b.PK.Game.handSize(), 'the promise matches the deal');
+  });
+
+  it('the price rung marks the shop up', function () {
+    const r = rungDeclaring('priceMul');
+    ok(r, 'some rung raises prices');
+    function costs(stake) {
+      const g = fresh();
+      g.PK.Game.newRun('PRICE', stake);
+      const G = g.PK.Game.G;
+      G.target = 1; G.score = 1;
+      g.PK.Game.cashOut();
+      return G.shop.offers.map(function (o) { return { id: o.id, cost: o.cost }; });
+    }
+    const cheap = costs(r.level - 1), dear = costs(r.level);
+    deepEq(cheap.map(function (o) { return o.id; }), dear.map(function (o) { return o.id; }),
+      'same seed, same offers — only the prices should move');
+    let raised = 0;
+    cheap.forEach(function (o, i) { if (dear[i].cost > o.cost) raised++; });
+    ok(raised > 0, 'nothing got dearer under ' + r.name);
+  });
+
+  it('the purse rung cuts the starting gold and doubles the first reroll', function () {
+    const r = rungDeclaring('startGold');
+    ok(r, 'some rung cuts the purse');
+    const a = fresh(); a.PK.Game.newRun('ORA', r.level - 1);
+    const b = fresh(); b.PK.Game.newRun('ORA', r.level);
+    eq(a.PK.Game.G.gold, 6, 'the base start');
+    eq(b.PK.Game.G.gold, r.mods.startGold, r.name + ' starts on what it declares');
+    ok(r.mods.startGold < 6, 'and that is less than the base');
+    [a, b].forEach(function (g) {
+      const G = g.PK.Game.G;
+      G.target = 1; G.score = 1;
+      g.PK.Game.cashOut();
+    });
+    eq(b.PK.Game.G.shop.rerollCost, a.PK.Game.G.shop.rerollCost * 2, 'doubled');
+  });
+
+  it('the modifier rung brings the board forward, but never onto floor 1', function () {
+    /* Floor 1 stays quiet at every Descent. A modifier there stacks with the
+       top rung's own lost ball — Short Hand takes two more — and left runs
+       facing a 240 target with three balls, dying on floor 2 by median. */
+    const r = rungDeclaring('modifierFloor');
+    ok(r, 'some rung starts the modifiers early');
+    ok(r.mods.modifierFloor >= 2, 'floor 1 must stay quiet, got ' + r.mods.modifierFloor);
+    ok(r.mods.modifierFloor < 3, 'but earlier than the usual floor 3');
+
+    let earlyOn = 0, earlyBase = 0, floorOne = 0;
+    for (let i = 0; i < 30; i++) {
+      const g = fresh(); g.PK.Game.newRun('GOLD' + i, r.level);
+      if (g.PK.Game.G.modifier) floorOne++;
+      // step to the floor the rung says the board wakes up on
+      while (g.PK.Game.G.floor < r.mods.modifierFloor) {
+        const G = g.PK.Game.G;
+        G.target = 1; G.score = 1;
+        g.PK.Game.cashOut();
+        if (G.screen !== 'shop') break;
+        g.PK.Game.leaveShop();
+      }
+      if (g.PK.Game.G.modifier) earlyOn++;
+
+      const h = fresh(); h.PK.Game.newRun('GOLD' + i, 1);
+      while (h.PK.Game.G.floor < r.mods.modifierFloor) {
+        const H = h.PK.Game.G;
+        H.target = 1; H.score = 1;
+        h.PK.Game.cashOut();
+        if (H.screen !== 'shop') break;
+        h.PK.Game.leaveShop();
+      }
+      if (h.PK.Game.G.modifier) earlyBase++;
+    }
+    eq(floorOne, 0, 'the opening floor fought back ' + floorOne + ' times');
+    ok(earlyOn > 20, 'only ' + earlyOn + ' of 30 boards woke early under ' + r.name);
+    eq(earlyBase, 0, 'the base Descent is still quiet that early');
+  });
+
+  it('the payout rung shaves a gold off every cleared floor', function () {
+    const r = rungDeclaring('goldFlat');
+    ok(r, 'some rung cuts the payout');
+    function payout(stake) {
+      const g = fresh();
+      g.PK.Game.newRun('PAY', stake);
+      const G = g.PK.Game.G;
+      G.target = 1; G.score = 1;
+      const before = G.gold;
+      g.PK.Game.cashOut();
+      return G.gold - before;
+    }
+    eq(payout(r.level), payout(r.level - 1) - 1, 'exactly one less under ' + r.name);
+  });
+
+  it('the run carries its Descent through a resume', function () {
+    const g = fresh();
+    g.PK.Game.newRun('STKSAVE', 5);
+    g.PK.Game.persist();
+    eq(g.helpers.savedRun().stake, 5, 'written');
+    const g2 = fresh({ storage: g.localStorage._store });
+    eq(g2.PK.Game.resumeRun(), true);
+    eq(g2.PK.Game.G.stake, 5, 'restored');
+  });
+
+  it('a run saved before the ladder resumes on the base Descent', function () {
+    const g = fresh();
+    g.PK.Game.newRun('OLDSTK', 6);
+    g.PK.Game.persist();
+    const store = g.localStorage._store;
+    const saved = JSON.parse(store['pegfall.run.v1']);
+    delete saved.stake; delete saved.won; delete saved.endless;
+    store['pegfall.run.v1'] = JSON.stringify(saved);
+    const g2 = fresh({ storage: store });
+    eq(g2.PK.Game.resumeRun(), true, 'still loads');
+    eq(g2.PK.Game.G.stake, 1, 'base Descent');
+    eq(g2.PK.Game.G.won, false);
+  });
+});
+
+describe('winning', function () {
+  /**
+   * Walk a run down to `floor`.
+   *
+   * The score is set rather than played for. Dropping a ball to clear each
+   * floor looks more honest but is not: from floor 10 the void-slot modifiers
+   * can send a ball to a 0x slot, so a one-ball floor sometimes fails and the
+   * run dies on the way down — which is what made the first version of these
+   * tests pass or fail depending on the seed. Target 1 with score 1 rather
+   * than 0 on both, because a zero target divides by zero in the gold formula.
+   */
+  function descendTo(g, floor) {
+    const G = g.PK.Game.G;
+    let guard = 0;
+    while (G.floor < floor && guard++ < 80) {
+      G.target = 1; G.score = 1;
+      g.PK.Game.cashOut();
+      if (G.screen !== 'shop') break;
+      g.PK.Game.leaveShop();
+    }
+    return G;
+  }
+
+  /** Clear the floor the run is standing on. */
+  function clearFloor(g) {
+    const G = g.PK.Game.G;
+    G.target = 1; G.score = 1;
+    g.PK.Game.cashOut();
+    return G;
+  }
+
+  it('there is a win floor, and it is a boss floor', function () {
+    const w = fresh().PK.Game.WIN_FLOOR;
+    ok(w > 1, 'a real climb');
+    eq(w % 5, 0, 'bosses land every fifth floor, so the last one is a boss');
+  });
+
+  it('clearing it wins the run and raises the banner', function () {
+    const g = fresh({ arcade: true });
+    g.PK.Game.newRun('WIN', 1);
+    const G = descendTo(g, g.PK.Game.WIN_FLOOR);
+    eq(G.floor, g.PK.Game.WIN_FLOOR, 'reached the floor');
+    clearFloor(g);
+    eq(G.won, true, 'won');
+    eq(g.bus.screen, 'victory', 'the banner went up');
+    eq(g.bus.victories, 1, 'once');
+    eq(G.screen, 'play', 'the shop waits until the banner is dismissed');
+  });
+
+  it('a won run keeps going instead of stopping', function () {
+    const g = fresh();
+    g.PK.Game.newRun('WINON', 1);
+    const G = descendTo(g, g.PK.Game.WIN_FLOOR);
+    clearFloor(g);
+    eq(G.endless, false, 'paused on the banner');
+    g.PK.Game.continueEndless();
+    eq(G.endless, true, 'carried on');
+    g.PK.Game.leaveShop();
+    eq(G.floor, g.PK.Game.WIN_FLOOR + 1, 'onto the next floor');
+    eq(G.screen, 'play');
+  });
+
+  it('it only wins once, however deep the run goes', function () {
+    const g = fresh();
+    g.PK.Game.newRun('WINONCE', 1);
+    const G = descendTo(g, g.PK.Game.WIN_FLOOR);
+    clearFloor(g);
+    g.PK.Game.continueEndless();
+    g.PK.Game.leaveShop();
+    const before = g.bus.victories;
+    for (let i = 0; i < 4; i++) {
+      clearFloor(g);
+      if (G.screen === 'shop') g.PK.Game.leaveShop();
+    }
+    eq(g.bus.victories, before, 'the banner did not go up again');
+    ok(G.floor > g.PK.Game.WIN_FLOOR, 'but the run went deeper');
+  });
+
+  it('a win unlocks exactly the next Descent, and records the clear', function () {
+    const g = fresh({ arcade: true });
+    eq(g.helpers.meta().unlockedStake, 1, 'only the base to start');
+    g.PK.Game.newRun('UNLOCK', 1);
+    const G = descendTo(g, g.PK.Game.WIN_FLOOR);
+    clearFloor(g);
+
+    const m = g.helpers.meta();
+    eq(m.unlockedStake, 2, 'the next rung opened');
+    eq(m.bestStake, 1, 'and the best beaten is recorded');
+    eq(g.Arcade.progress.hasClear('pegfall', 'white'), true, 'the arcade knows');
+    eq(g.Arcade.progress.hasClear('pegfall', 'red'), false, 'and only that one');
+  });
+
+  it('winning a lower Descent again does not lower what is unlocked', function () {
+    const g = fresh({ arcade: true, storage: {
+      'pegfall.meta.v1': JSON.stringify({ unlockedStake: 5, bestStake: 4 })
+    } });
+    g.PK.Game.newRun('NODROP', 1);
+    const G = descendTo(g, g.PK.Game.WIN_FLOOR);
+    clearFloor(g);
+    const m = g.helpers.meta();
+    eq(m.unlockedStake, 5, 'still five');
+    eq(m.bestStake, 4, 'still four');
+  });
+
+  it('the run summary and the leaderboard row carry the win and the Descent', function () {
+    const g = fresh({ arcade: true });
+    g.PK.Game.newRun('SUMMARY', 3);
+    const G = descendTo(g, g.PK.Game.WIN_FLOOR);
+    clearFloor(g);
+    g.PK.Game.continueEndless();
+    g.PK.Game.leaveShop();
+    G.target = 1e9;                     // and now die
+    g.helpers.playFloor(310);
+    eq(G.screen, 'gameover');
+
+    eq(g.bus.recorded.length, 1, 'one progression record');
+    eq(g.bus.recorded[0].summary.won, true, 'it knows the run was won');
+    eq(g.bus.recorded[0].summary.difficulty, 'green', 'on the third Descent');
+    eq(g.bus.submitted[0].payload.meta.stake, 3, 'the leaderboard row too');
+    eq(g.bus.submitted[0].payload.meta.won, true);
+  });
+
+  it('a run saved on the victory banner comes back to the banner', function () {
+    /* Without this the run resumes onto a floor it has already resolved: the
+       hand is full but canDrop() is false, cashOut() does nothing, and there
+       is no route to the shop. A dead board the player cannot leave. */
+    const g = fresh();
+    g.PK.Game.newRun('WINSAVE', 1);
+    const G = descendTo(g, g.PK.Game.WIN_FLOOR);
+    clearFloor(g);
+    eq(G.won, true); eq(G.endless, false);
+
+    const g2 = fresh({ storage: g.localStorage._store });
+    eq(g2.PK.Game.resumeRun(), true, 'resumed');
+    eq(g2.bus.screen, 'victory', 'the banner came back');
+    const R = g2.PK.Game.G;
+    eq(R.won, true); eq(R.endless, false);
+
+    // And it is still a live run: continuing opens the shop it was owed.
+    const goldBefore = R.gold;
+    g2.PK.Game.continueEndless();
+    eq(R.screen, 'shop', 'back into the shop');
+    ok(R.gold >= goldBefore, 'the floor payout was not lost');
+    g2.PK.Game.leaveShop();
+    eq(R.floor, g2.PK.Game.WIN_FLOOR + 1, 'and on down');
+  });
+
+  it('a run that dies short of the floor is not a win', function () {
+    const g = fresh({ arcade: true });
+    g.PK.Game.newRun('LOSE', 1);
+    const G = g.PK.Game.G;
+    G.target = 1e9;
+    g.helpers.playFloor(310);
+    eq(G.screen, 'gameover');
+    eq(G.won, false);
+    eq(g.bus.victories, 0, 'no banner');
+    eq(g.helpers.meta().unlockedStake, 1, 'nothing unlocked');
+    eq(g.bus.recorded[0].summary.won, false);
   });
 });
 

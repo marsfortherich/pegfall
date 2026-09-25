@@ -11,7 +11,10 @@
     { ball: 'voidball', floor: 9, name: 'Void ball' }
   ];
 
-  var DEFAULT = { bestFloor: 0, runs: 0, bestScore: 0, totalScore: 0, deepestSeed: '' };
+  /* unlockedStake is the highest Descent selectable; bestStake the highest
+     actually beaten. Both default so an older profile loads unchanged. */
+  var DEFAULT = { bestFloor: 0, runs: 0, bestScore: 0, totalScore: 0, deepestSeed: '',
+                  unlockedStake: 1, bestStake: 0, wins: 0 };
 
   function load() {
     try {

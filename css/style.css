@@ -282,6 +282,23 @@ button.big {
 .offer:hover { transform: translateY(-3px); border-color: var(--c); }
 .offer.sold { opacity: 0.42; }
 
+/* ----------------------------------------------------------- the Descents */
+.stakes { display: flex; align-items: center; gap: 10px; justify-content: center; margin-bottom: 14px; }
+.stakes label { font-size: 10px; letter-spacing: 2px; color: var(--muted); text-transform: uppercase; }
+.rungs { display: flex; gap: 4px; }
+.rung {
+  width: 26px; padding: 5px 0; font-size: 11px; line-height: 1;
+  border: 1px solid var(--line); color: var(--muted); background: #0a0e15;
+}
+.rung:not(.locked) { color: var(--c); border-color: color-mix(in srgb, var(--c) 45%, transparent); }
+.rung.on { background: var(--c); color: #0b0f16; border-color: var(--c); font-weight: 700; }
+.rung.locked { opacity: 0.3; cursor: not-allowed; }
+.stakename { font-size: 11px; color: var(--muted); min-width: 108px; text-align: left; }
+
+/* The win banner reuses the run-over card, in gold rather than red. */
+.card.over.win h2 { color: var(--gold); }
+.card.over.win { border-color: var(--gold); }
+
 /* A held offer: it survives the reroll and comes with you to the next shop. */
 .offer { position: relative; }
 .offer.held { border-color: var(--gold); }

@@ -375,6 +375,79 @@
     }
   ];
 
+  /* ------------------------------------------------------------- descents
+
+     PEGFALL's difficulty ladder. Cumulative, exactly as One More Roll's
+     Perils and No Limit's Stakes are: playing at level N applies every
+     modifier from 1 to N, and the arcade's colour order is shared across all
+     three games so a player reads the same ladder everywhere.
+
+     Every lever here already existed — target, price, hand size, starting
+     gold, the reroll price, and the floor modifiers begin on. Nothing new was
+     invented to make the ladder hurt.
+     -------------------------------------------------------------------- */
+  var STAKES = [
+    { level: 1, id: 'white',  name: 'White Descent',  color: '#e8e3d5',
+      desc: 'The board as it was built.', mods: {} },
+    { level: 2, id: 'red',    name: 'Red Descent',    color: '#d0434f',
+      desc: 'Floor targets are 6% higher.', mods: { targetMul: 1.06 } },
+    { level: 3, id: 'green',  name: 'Green Descent',  color: '#57d17a',
+      desc: 'Everything in the shop costs 12% more.', mods: { priceMul: 1.12 } },
+    { level: 4, id: 'black',  name: 'Black Descent',  color: '#6b7380',
+      desc: 'Floor targets are a further 6% higher.', mods: { targetMul: 1.06 } },
+    { level: 5, id: 'blue',   name: 'Blue Descent',   color: '#0090ff',
+      desc: 'Every cleared floor pays 1 less gold.', mods: { goldFlat: -1 } },
+    { level: 6, id: 'purple', name: 'Purple Descent', color: '#9b6bd8',
+      desc: 'Floor targets are a further 7% higher.', mods: { targetMul: 1.07 } },
+    { level: 7, id: 'orange', name: 'Orange Descent', color: '#f0a92c',
+      desc: 'You start on 2 gold instead of 6, and rerolls cost double.',
+      mods: { startGold: 2, rerollMul: 2 } },
+    { level: 8, id: 'gold',   name: 'Gold Descent',   color: '#ffd479',
+      /* Floor 2, not floor 1. Modifiers on the opening floor stack with this
+         rung's own lost ball — Short Hand takes two more — which left a run
+         facing a 240 target with three balls and a median death on floor 2.
+         A rung you cannot get past is a wall, not a difficulty. */
+      desc: 'You draw one ball fewer every floor, the board fights back from ' +
+            'floor 2, and the reroll price climbs twice as fast.',
+      mods: { hand: -1, modifierFloor: 2, rerollStep: 2 } }
+  ];
+
+  /* Ordering is deliberate. PEGFALL's economy is fragile — a floor pays 8-12
+     gold and a relic costs 5-12, so roughly one purchase a floor — which makes
+     price and payout rungs compound viciously: an early +25% prices dropped the
+     measured win rate tenfold in one step, while a +7% target barely moved it.
+     So targets carry most of the climb, the economy rungs sit in the middle,
+     and the two harshest levers (a ball fewer, and modifiers from floor 1) are
+     held back to the last rung where a cliff is the point. */
+
+  /** Merge descents 1..level into one modifier block. */
+  function stakeMods(level) {
+    var out = {
+      targetMul: 1, priceMul: 1, rerollMul: 1,
+      goldFlat: 0, hand: 0, rerollStep: 1,
+      startGold: null, modifierFloor: null
+    };
+    var n = Math.max(1, Math.min(level || 1, STAKES.length));
+    for (var i = 0; i < n; i++) {
+      var m = STAKES[i].mods;
+      for (var k in m) {
+        if (!Object.prototype.hasOwnProperty.call(m, k)) continue;
+        if (k === 'targetMul' || k === 'priceMul' || k === 'rerollMul') out[k] *= m[k];
+        else if (k === 'goldFlat' || k === 'hand') out[k] += m[k];
+        else out[k] = m[k];                     // startGold, modifierFloor, rerollStep
+      }
+    }
+    return out;
+  }
+
+  function stakeByLevel(n) {
+    return STAKES[Math.max(0, Math.min((n || 1) - 1, STAKES.length - 1))];
+  }
+
+  PK.STAKES = STAKES;
+  PK.stakeMods = stakeMods;
+  PK.stakeByLevel = stakeByLevel;
+
   PK.BALLS = BALLS;
   PK.PEGS = PEGS;
   PK.RELICS = RELICS;

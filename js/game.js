@@ -44,6 +44,17 @@
      Deliberately a fixed count rather than a percentage roll: a roll would
      draw from G.rng and quietly change what every existing seed plays like. */
   var PEG_RESPAWN_DROPS = 2;
+  /* Clear this floor and the run is won. It is a boss floor on purpose —
+     bosses land every fifth — and it was picked from measurement rather than
+     taste: across 500 competent simulated runs, floor 15 is reached by about
+     20%, which is roughly double One More Roll's 10% win rate and suits the
+     lighter of the three games. Move this one number to move the bar.
+
+     Winning does not end the run. The leaderboard reads a run's total score,
+     so stopping a winner dead would punish them for winning; clearing floor 15
+     raises the banner and then lets you carry on into the endless tail, which
+     is what One More Roll does too. */
+  var WIN_FLOOR = 15;
 
   var G = {
     screen: 'menu',          // menu | play | shop | gameover
@@ -61,6 +72,10 @@
     stats: null,
     shop: null,
     locked: [],          // offers held over to the next shop
+    stake: 1,            // which Descent this run is being played on
+    won: false,          // cleared WIN_FLOOR at least once
+    shopGained: 0,       // payout waiting behind the victory banner
+    endless: true,       // false only while the victory banner is up
     log: []
   };
 
@@ -90,6 +105,9 @@
   }
 
   function hasRelic(id) { return G.relics.indexOf(id) !== -1; }
+
+  /** Every Descent modifier from 1 up to this run's level, merged. */
+  function mods() { return PK.stakeMods(G.stake || 1); }
 
   function popup(x, y, text, color, big) {
     G.popups.push({ x: x, y: y, text: text, color: color || '#e8eef7', life: 1, big: !!big });
@@ -184,6 +202,10 @@
       stats: G.stats,
       log: G.log,
       locked: G.locked.slice(),
+      stake: G.stake,
+      won: G.won,
+      endless: G.endless,
+      shopGained: G.shopGained || 0,
       shop: G.shop ? {
         rerollCost: G.shop.rerollCost,
         gained: G.shop.gained,
@@ -231,6 +253,12 @@
     G.stats = d.stats;
     G.log = d.log || [];
     G.locked = d.locked || [];
+    /* A run saved before the ladder existed was, by definition, played on the
+       base Descent and had no way to win. */
+    G.stake = d.stake || 1;
+    G.won = !!d.won;
+    G.endless = d.endless === undefined ? true : !!d.endless;
+    G.shopGained = d.shopGained || 0;
     G.balls = []; G.popups = []; G.particles = [];
     G.aiming = true;
     G.shake = 0;
@@ -252,20 +280,29 @@
 
     PK.Board.layoutSlots(G.board);
     PK.UI.refresh();
-    if (G.screen === 'shop') PK.UI.showShop();
+    /* A run saved while the victory banner was up comes back to the banner.
+       Without this it resumes onto a resolved floor with nothing droppable and
+       no way to reach the shop — a dead board the player cannot leave. */
+    if (G.won && !G.endless) PK.UI.showVictory();
+    else if (G.screen === 'shop') PK.UI.showShop();
     else PK.UI.onFloorStart();
     return true;
   }
 
   /* ------------------------------------------------------------------ run */
 
-  function newRun(seed) {
+  function newRun(seed, stake) {
     G.meta = G.meta || PK.Save.load();
+    G.stake = Math.max(1, Math.min(stake || 1, PK.STAKES.length));
+    G.won = false;
+    G.endless = true;
     G.seed = (seed || PK.randomSeedWord()).toUpperCase();
     G.rng = new PK.Rng(G.seed);
     G.floor = 0;
     G.score = 0;
-    G.gold = 6 + (window.Arcade && window.Arcade.progress
+    var m = mods();
+    var startGold = m.startGold === null ? 6 : m.startGold;
+    G.gold = startGold + (window.Arcade && window.Arcade.progress
       ? window.Arcade.progress.bonus('pegfall', 'gold') : 0);
     G.bag = ['standard', 'standard', 'standard', 'standard', 'standard', 'standard', 'bouncy', 'heavy'];
     G.relics = [];
@@ -282,10 +319,13 @@
     startFloor();
   }
 
+  var MODIFIERS_FROM = 3;
+
   function pickModifier() {
     var boss = G.floor % 5 === 0;
     if (boss) return G.rng.pick(PK.BOSS_MODIFIERS);
-    if (G.floor < 3) return null;
+    var from = mods().modifierFloor;
+    if (G.floor < (from === null ? MODIFIERS_FROM : from)) return null;
     return G.rng.pick(PK.MODIFIERS);
   }
 
@@ -333,13 +373,14 @@
     var t = BASE_TARGET * Math.pow(TARGET_GROWTH, G.floor - 1);
     if (G.floor % 5 === 0) t *= 1.3;
     if (mod && mod.targetMul) t *= mod.targetMul;
+    t *= mods().targetMul;
     G.target = Math.round(t / 5) * 5;
 
     G.score = G.carryScore;
     G.carryScore = 0;
 
     // Hand
-    var size = reduceHook('handSize', G.handSizeBase);
+    var size = reduceHook('handSize', G.handSizeBase) + mods().hand;
     size = Math.max(1, Math.min(size, MAX_HAND));
     var shuffled = G.rng.shuffle(G.bag);
     G.hand = shuffled.slice(0, Math.min(size, shuffled.length));
@@ -494,7 +535,7 @@
       var ctx = { gold: 4 + Math.min(4, Math.floor(((G.score - G.target) / G.target) * 4)) };
       ctx.gold += G.hand.length;
       callHook('onFloorEnd', ctx);
-      var gained = Math.max(0, Math.round(ctx.gold));
+      var gained = Math.max(0, Math.round(ctx.gold) + mods().goldFlat);
       G.gold += gained;
       G.stats.goldEarned += gained;
 
@@ -507,6 +548,21 @@
       PK.Save.save(G.meta);
 
       PK.Sfx.bank();
+
+      /* The run is won the first time WIN_FLOOR falls. It does not stop there:
+         the banner goes up, and continuing drops back into the ordinary shop
+         and on down. */
+      if (G.floor >= WIN_FLOOR && !G.won) {
+        G.won = true;
+        G.endless = false;
+        G.shopGained = gained;
+        recordWin();
+        PK.Sfx.cleared();
+        persist();
+        PK.UI.showVictory();
+        return;
+      }
+
       openShop(gained);
     } else if (hasRelic('second_chance')) {
       G.relics.splice(G.relics.indexOf('second_chance'), 1);
@@ -517,6 +573,46 @@
     } else {
       gameOver();
     }
+  }
+
+  /**
+   * A win, told to everything that keeps score.
+   *
+   * Separate from gameOver() because a won run is not over — the player may
+   * carry on into the endless tail and post a much larger number later. The
+   * leaderboard entry is still written at the end of the run, in gameOver();
+   * this is only the meta progression, which wants to know the moment a
+   * Descent was actually beaten.
+   */
+  function recordWin() {
+    G.meta.wins = (G.meta.wins || 0) + 1;
+    G.meta.bestStake = Math.max(G.meta.bestStake || 0, G.stake);
+    if ((G.meta.unlockedStake || 1) <= G.stake && G.stake < PK.STAKES.length) {
+      G.meta.unlockedStake = G.stake + 1;
+    }
+    PK.Save.save(G.meta);
+
+    if (window.Arcade && window.Arcade.progress) {
+      window.Arcade.progress.recordClear('pegfall', PK.stakeByLevel(G.stake).id);
+    }
+  }
+
+  /**
+   * Stop a run on purpose, from the victory banner.
+   *
+   * It goes through gameOver() rather than around it, so the score posts and
+   * the meta updates exactly as they would if the run had ended by falling
+   * short. The only difference is what the screen says about it.
+   */
+  function endRun() {
+    if (G.screen === 'gameover') return;
+    gameOver();
+  }
+
+  /** Leave the victory banner and keep descending. */
+  function continueEndless() {
+    G.endless = true;
+    openShop(G.shopGained || 0);
   }
 
   /** Bank the floor early, keeping unused balls (they pay gold). */
@@ -542,7 +638,8 @@
         floor: G.floor,
         bestBall: G.stats.bestBall,
         relics: G.relics.length,
-        difficulty: 'standard'
+        won: G.won,
+        difficulty: PK.stakeByLevel(G.stake).id
       });
       window.Arcade.submitScore('pegfall', {
         score: G.stats.runTotal,
@@ -551,7 +648,9 @@
           floor: G.floor,
           seed: G.seed,
           relics: G.relics.length,
-          pegs: G.stats.pegs
+          pegs: G.stats.pegs,
+          stake: G.stake,
+          won: G.won
         }
       });
     }
@@ -578,6 +677,11 @@
     return (SERVICES[id] || {}).data;
   }
 
+  /** A shop price after the Descent's mark-up. */
+  function price(base) {
+    return Math.max(1, Math.round(base * mods().priceMul));
+  }
+
   function shopPool() {
     var offers = [];
     PK.RELICS.forEach(function (r) {
@@ -586,11 +690,11 @@
          run that has committed to gold pegs is the one that gets shown Mother
          Lode. It is what turns a pile of relics into a build. */
       if (r.requires && G.relics.indexOf(r.requires) === -1) return;
-      offers.push({ kind: 'relic', id: r.id, data: r, cost: r.cost });
+      offers.push({ kind: 'relic', id: r.id, data: r, cost: price(r.cost) });
     });
     PK.Save.unlockedBalls(G.meta).forEach(function (id) {
       var b = PK.BALLS[id];
-      if (b && id !== 'standard') offers.push({ kind: 'ball', id: id, data: b, cost: b.cost });
+      if (b && id !== 'standard') offers.push({ kind: 'ball', id: id, data: b, cost: price(b.cost) });
     });
     Object.keys(SERVICES).forEach(function (id) {
       // Never sell something that cannot do anything.
@@ -599,7 +703,7 @@
       if (id === 'trim' && G.bag.length <= 3) return;
       if (id === 'gild' && G.bag.indexOf('standard') === -1) return;
       var sv = SERVICES[id];
-      offers.push({ kind: 'service', id: id, cost: sv.cost, data: sv.data });
+      offers.push({ kind: 'service', id: id, cost: price(sv.cost), data: sv.data });
     });
     return offers;
   }
@@ -663,7 +767,8 @@
 
   function openShop(gained) {
     G.screen = 'shop';
-    G.shop = { rerollCost: 2, gained: gained, offers: heldOffers() };
+    G.shop = { rerollCost: Math.max(1, Math.round(2 * mods().rerollMul)),
+               gained: gained, offers: heldOffers() };
     rollShop();
     persist();
     PK.UI.showShop();
@@ -711,7 +816,7 @@
   function reroll() {
     if (G.gold < G.shop.rerollCost) { PK.Sfx.deny(); return; }
     G.gold -= G.shop.rerollCost;
-    G.shop.rerollCost++;
+    G.shop.rerollCost += mods().rerollStep;
     rollShop();
     PK.Sfx.ui();
     persist();
@@ -789,13 +894,18 @@
     reroll: reroll,
     leaveShop: leaveShop,
     hasRelic: hasRelic,
+    continueEndless: continueEndless,
+    endRun: endRun,
+    stake: function () { return G.stake; },
+    stakeMods: mods,
+    WIN_FLOOR: WIN_FLOOR,
     hasSave: hasSave,
     resumeRun: resumeRun,
     persist: persist,
     /* Capped exactly as startFloor caps it, so the shop footer cannot promise
        a hand the game will not deal. */
     handSize: function () {
-      return Math.max(1, Math.min(reduceHook('handSize', G.handSizeBase), MAX_HAND));
+      return Math.max(1, Math.min(reduceHook('handSize', G.handSizeBase) + mods().hand, MAX_HAND));
     },
     inFlight: inFlight,
     MAX_HAND: MAX_HAND,

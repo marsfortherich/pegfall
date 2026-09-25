@@ -46,10 +46,16 @@
         { id: 'deep_pockets', label: 'Deep Pockets', cost: 45, effect: 'gold:4',
           desc: 'Start every run with 4 extra gold.' }
       ],
-      /* PEGFALL has no difficulty ladder and no win condition — it is endless
-         and ends when you fall short. One tier keeps the shape of the system
-         without inventing a completion bar the game does not have. */
-      difficulties: [{ id: 'standard', label: 'Standard' }]
+      /* The Descent ladder. PEGFALL was endless with nothing to beat until it
+         gained a win floor; these are the eight rungs, in the colour order the
+         other two games use, so a player reads the same ladder everywhere.
+         The ids match PK.STAKES in the game's own content.js. */
+      difficulties: [
+        { id: 'white', label: 'White Descent' }, { id: 'red', label: 'Red Descent' },
+        { id: 'green', label: 'Green Descent' }, { id: 'black', label: 'Black Descent' },
+        { id: 'blue', label: 'Blue Descent' }, { id: 'purple', label: 'Purple Descent' },
+        { id: 'orange', label: 'Orange Descent' }, { id: 'gold', label: 'Gold Descent' }
+      ]
     },
 
     onemoreroll: {
@@ -130,6 +136,13 @@
       desc: 'Score 1,000 with a single ball.', test: function (s) { return (s.bestBall || 0) >= 1000; } },
     { id: 'pegfall_collector', game: 'pegfall', label: 'Magpie', steam: 'ACH_PEGFALL_COLLECTOR',
       desc: 'Hold 6 relics at once.', test: function (s) { return (s.relics || 0) >= 6; } },
+    /* The other two games each have a win achievement; PEGFALL had nothing to
+       win until the Descent ladder, so it had none. */
+    { id: 'pegfall_win', game: 'pegfall', label: 'Touching the Bottom', steam: 'ACH_PEGFALL_WIN',
+      desc: 'Beat a Descent.', test: function (s) { return !!s.won; } },
+    { id: 'pegfall_gold', game: 'pegfall', label: 'All the Way Down', steam: 'ACH_PEGFALL_GOLD',
+      desc: 'Beat the Gold Descent.',
+      test: function (s) { return !!s.won && s.difficulty === 'gold'; } },
 
     /* ---- One More Roll ---- */
     { id: 'omr_win', game: 'onemoreroll', label: 'One More Win', steam: 'ACH_OMR_WIN',

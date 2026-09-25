@@ -209,6 +209,30 @@
     }
   }
 
+  /**
+   * The Descent ladder, as a row of rungs.
+   *
+   * Every rung is shown, including the locked ones — the point of a ladder is
+   * seeing how far it goes. Beating a Descent opens the next.
+   */
+  function stakeRow(meta) {
+    var unlocked = Math.max(1, meta.unlockedStake || 1);
+    var best = meta.bestStake || 0;
+    var pick = Math.min(unlocked, PK.STAKES.length);
+    return '<div class="stakes" id="stake-row"><label>Descent</label><div class="rungs">' +
+      PK.STAKES.map(function (s) {
+        var open = s.level <= unlocked;
+        return '<button class="rung' + (open ? '' : ' locked') + (s.level === pick ? ' on' : '') +
+          '" data-stake="' + s.level + '"' + (open ? '' : ' disabled') +
+          ' style="--c:' + s.color + '"' +
+          ' data-tip="<b>' + esc(s.name) + '</b><br>' + s.desc +
+          (s.level <= best ? '<br><i>Beaten.</i>' : open ? '' : '<br><i>Beat the one before it.</i>') + '"' +
+          '>' + s.level + '</button>';
+      }).join('') +
+      '</div><span class="stakename" id="stake-name">' +
+      esc(PK.stakeByLevel(pick).name) + '</span></div>';
+  }
+
   function showMenu() {
     var meta = PK.Save.load();
     var next = PK.Save.nextUnlock(meta);
@@ -223,6 +247,7 @@
       'fighting back.</p>' +
       '<div class="seedrow"><label>Seed</label><input id="seed-input" maxlength="16" placeholder="' +
       esc(PK.randomSeedWord()) + '"></div>' +
+      stakeRow(meta) +
       (saved
         ? '<button class="big" id="btn-continue">CONTINUE · FLOOR ' + saved.floor + '</button>' +
           '<button id="btn-start" class="newrun">NEW RUN</button>'
@@ -230,6 +255,7 @@
       '<div class="records">' +
       '<div><b>' + meta.bestFloor + '</b><span>best floor</span></div>' +
       '<div><b>' + meta.runs + '</b><span>runs</span></div>' +
+      '<div><b>' + (meta.wins || 0) + '</b><span>wins</span></div>' +
       '<div><b>' + meta.bestScore.toLocaleString() + '</b><span>best floor score</span></div>' +
       '</div>' +
       '<p class="muted small">Unlocked balls: ' + unlocked.map(function (b) { return PK.BALLS[b].name; }).join(', ') +
@@ -241,6 +267,20 @@
       '<button id="btn-help">HOW TO PLAY</button>' +
       '</div>' +
       '</div>', false);
+
+    /* The chosen rung lives on the button row itself rather than in a
+       variable, so re-rendering the menu cannot lose it. */
+    var chosen = Math.max(1, Math.min(meta.unlockedStake || 1, PK.STAKES.length));
+    Array.prototype.forEach.call(el.overlay.querySelectorAll('[data-stake]'), function (b) {
+      b.addEventListener('click', function () {
+        chosen = parseInt(b.dataset.stake, 10);
+        PK.Sfx.ui();
+        Array.prototype.forEach.call(el.overlay.querySelectorAll('[data-stake]'), function (o) {
+          o.classList.toggle('on', o === b);
+        });
+        $('stake-name').textContent = PK.stakeByLevel(chosen).name;
+      });
+    });
 
     $('btn-settings').addEventListener('click', function () { PK.Sfx.ui(); showSettings(true); });
     $('btn-help').addEventListener('click', function () { PK.Sfx.ui(); showHelp(true); });
@@ -258,7 +298,7 @@
           saved.floor + ' will be discarded.')) return;
       PK.Sfx.ui();
       hideOverlay();
-      PK.Game.newRun(v || null);
+      PK.Game.newRun(v || null, chosen);
     });
     $('seed-input').addEventListener('keydown', function (e) {
       if (e.key === 'Enter') $('btn-start').click();
@@ -334,7 +374,11 @@
       'of your hand becomes gold instead — you never have to drop them. Dropping on anyway buys ' +
       'score, not gold: every ball you spend is a gold you do not bank.</p>' +
       '<p><b>Between floors</b> you buy relics and stranger balls. From floor 3 the board starts ' +
-      'fighting back, and every fifth floor is a boss.</p>' +
+      'fighting back, and every fifth floor is a boss. Hold an offer with the padlock and it ' +
+      'waits for you at the next shop.</p>' +
+      '<p><b>Reach floor ' + PK.Game.WIN_FLOOR + ' and you have won</b> — though the run does not ' +
+      'have to stop there, and the score keeps climbing if you carry on. Winning opens the next ' +
+      '<b>Descent</b>: eight rungs of the same board, each one meaner than the last.</p>' +
       '</div>' +
       '<div class="helpkeys">' +
       '<div><b>Click</b> aim and drop</div>' +
@@ -420,14 +464,65 @@
     }).join(', ');
   }
 
+  /**
+   * The banner for clearing the win floor.
+   *
+   * It does not end the run — the leaderboard reads a run's total score, so
+   * stopping a winner would punish them for winning. CONTINUE drops back into
+   * the ordinary shop and on down.
+   */
+  function showVictory() {
+    refresh();
+    var st = PK.stakeByLevel(PK.Game.stake());
+    var meta = G.meta;
+    var next = PK.STAKES[st.level];          // the rung above, if there is one
+    showOverlay(
+      '<div class="card over win">' +
+      '<h2>THE BOTTOM</h2>' +
+      '<p class="tag" style="color:' + st.color + '">' + esc(st.name) + ' cleared — floor ' +
+      PK.Game.WIN_FLOOR + '</p>' +
+      '<div class="records">' +
+      '<div><b>' + Math.round(G.stats.runTotal).toLocaleString() + '</b><span>run score</span></div>' +
+      '<div><b>' + G.stats.pegs.toLocaleString() + '</b><span>pegs hit</span></div>' +
+      '<div><b>' + G.stats.bestBall.toLocaleString() + '</b><span>best single ball</span></div>' +
+      '<div><b>' + G.relics.length + '</b><span>relics</span></div>' +
+      '</div>' +
+      '<p class="muted small">' +
+      (next ? 'Unlocked: <b style="color:' + next.color + '">' + esc(next.name) + '</b> — ' + next.desc
+            : 'Every Descent is beaten. There is nothing below this.') +
+      '</p>' +
+      '<p class="muted small">The run does not have to stop. Keep going and the score keeps climbing.</p>' +
+      '<div class="shopfoot">' +
+      '<button id="btn-continue-run" class="big">KEEP DESCENDING →</button>' +
+      '<button id="btn-win-menu">END THE RUN</button>' +
+      '</div></div>', false);
+
+    $('btn-continue-run').addEventListener('click', function () {
+      PK.Sfx.ui();
+      hideOverlay();
+      PK.Game.continueEndless();
+    });
+    $('btn-win-menu').addEventListener('click', function () {
+      PK.Sfx.ui();
+      PK.Game.endRun();
+    });
+    arcadeRow(el.overlay.querySelector('.over'));
+  }
+
   function showGameOver() {
     refresh();
     var meta = G.meta;
     showOverlay(
       '<div class="card over">' +
       '<h2>RUN OVER</h2>' +
-      '<p class="tag">You fell short on floor ' + G.floor + ' — ' +
-      Math.round(G.score).toLocaleString() + ' / ' + G.target.toLocaleString() + '</p>' +
+      /* A winner who walked away did not fall short, and saying so would be
+         the same class of lie the bank prompt used to tell. */
+      (G.won
+        ? '<p class="tag" style="color:var(--gold)">' +
+          esc(PK.stakeByLevel(PK.Game.stake()).name) + ' beaten — you walked away on floor ' +
+          G.floor + '</p>'
+        : '<p class="tag">You fell short on floor ' + G.floor + ' — ' +
+          Math.round(G.score).toLocaleString() + ' / ' + G.target.toLocaleString() + '</p>') +
       '<div class="records">' +
       '<div><b>' + Math.round(G.stats.runTotal).toLocaleString() + '</b><span>run score</span></div>' +
       '<div><b>' + G.floor + '</b><span>floor reached</span></div>' +
@@ -452,6 +547,7 @@
   }
 
   PK.UI = {
+    showVictory: showVictory,
     init: init,
     refresh: refresh,
     onFloorStart: onFloorStart,

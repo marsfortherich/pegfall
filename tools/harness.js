@@ -64,6 +64,7 @@ function makeUIStub(bus) {
     onFloorStart: function () { bus.screen = 'play'; bus.floorStarts++; },
     showShop: function () { bus.screen = 'shop'; },
     showGameOver: function () { bus.screen = 'gameover'; },
+    showVictory: function () { bus.screen = 'victory'; bus.victories++; },
     showToast: function (text) { bus.toasts.push(text); }
   };
 }
@@ -78,7 +79,7 @@ function createGame(options) {
   options = options || {};
 
   const bus = {
-    screen: null, toasts: [], refreshes: 0, floorStarts: 0,
+    screen: null, toasts: [], refreshes: 0, floorStarts: 0, victories: 0,
     submitted: [], recorded: []
   };
 
