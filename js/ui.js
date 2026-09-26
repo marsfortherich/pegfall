@@ -439,9 +439,13 @@
       '<button id="btn-reroll"' + (G.gold < s.rerollCost ? ' disabled' : '') + '>Reroll · ' + s.rerollCost + 'g</button>' +
       '<button class="big" id="btn-next">To floor ' + (G.floor + 1) + ' →</button>' +
       '</div>' +
+      /* The run's own hand, not the floor just cleared: THE GAUNTLET pins the
+         hand at three and its modifier is still loaded while this shop is open.
+         "At once" shows its ceiling too, so a volley that has stopped being
+         offered says why. */
       '<div class="shopbag"><b>Bag:</b> ' + bagSummary() + ' &nbsp;·&nbsp; <b>Hand:</b> ' +
-      PK.Game.handSize() + ' balls &nbsp;·&nbsp; <b>At once:</b> ' +
-      PK.Game.inFlight() + '</div>' +
+      PK.Game.runHandSize() + ' balls &nbsp;·&nbsp; <b>At once:</b> ' +
+      PK.Game.inFlight() + ' of ' + PK.Game.inFlightCap() + '</div>' +
       '</div>', false);
 
     Array.prototype.forEach.call(el.overlay.querySelectorAll('[data-buy]'), function (btn) {

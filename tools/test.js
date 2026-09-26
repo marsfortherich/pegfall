@@ -1155,19 +1155,107 @@ describe('shop', function () {
     eq(g.PK.Game.SERVICES.trim.weight, undefined, 'the others still take the default');
   });
 
-  it('the shop stops offering Juggling at the ceiling', function () {
-    const g = shopping('JUGGLECAP', 500);
+  /** How many of n shops offered a given service. */
+  function serviceRate(g, id, n) {
     const G = g.PK.Game.G;
-    G.inFlightBase = g.PK.Game.MAX_IN_FLIGHT;
-    for (let i = 0; i < 60; i++) {
+    let seen = 0;
+    for (let i = 0; i < n; i++) {
       G.gold = 500;
       g.PK.Game.reroll();
-      G.shop.offers.forEach(function (o) {
-        ok(!(o.kind === 'service' && o.id === 'juggle'),
-          'Juggling offered at the ceiling — the gold would be wasted');
-      });
+      if (G.shop.offers.some(function (o) { return o.kind === 'service' && o.id === id; })) seen++;
     }
+    return seen;
+  }
+
+  it('the volley ceiling is the hand, not the absolute cap', function () {
+    /* A floor never deals more than the hand, so once the volley matches it
+       another Juggling buys nothing. The absolute cap is 24 and a hand starts
+       at 6, so checking against MAX_IN_FLIGHT left eighteen wasted purchases
+       on the shelf. */
+    const g = shopping('JUGGLECAP', 500);
+    eq(g.PK.Game.inFlightCap(), g.PK.Game.handSize(), 'capped by the hand');
+    ok(g.PK.Game.inFlightCap() < g.PK.Game.MAX_IN_FLIGHT, 'well under the absolute cap');
   });
+
+  it('the shop stops offering Juggling once the volley matches the hand',
+    function () {
+      const g = shopping('JUGGLEFULL', 500);
+      const G = g.PK.Game.G;
+      G.inFlightBase = g.PK.Game.handSize();
+      eq(serviceRate(g, 'juggle', 60), 0,
+        'Juggling offered with the whole hand already in the air');
+    });
+
+  it('a bigger hand puts Juggling back on the shelf', function () {
+    /* The cap is not a dead end: buying hand size re-opens the volley, which
+       is what makes the two services a build rather than a queue. */
+    const g = shopping('JUGGLEREOPEN', 500);
+    const G = g.PK.Game.G;
+    G.inFlightBase = g.PK.Game.handSize();
+    eq(serviceRate(g, 'juggle', 40), 0, 'closed at the hand');
+    G.handSizeBase++;
+    eq(g.PK.Game.inFlightCap(), G.inFlightBase + 1, 'room for one more');
+    ok(serviceRate(g, 'juggle', 60) > 0, 'Juggling never came back');
+  });
+
+  it('a relic that grows the hand grows the volley ceiling too', function () {
+    const g = shopping('JUGGLERELIC', 500);
+    const G = g.PK.Game.G;
+    const before = g.PK.Game.inFlightCap();
+    G.relics.push('chaos_theory');            // +2 balls drawn
+    eq(g.PK.Game.inFlightCap(), before + 2, 'the relic counted');
+  });
+
+  it('a floor modifier that shrinks the hand does not close the volley',
+    function () {
+      /* G.modifier still holds the cleared floor's while the shop is open, and
+         THE GAUNTLET pins the hand at three. A player who has just beaten it
+         has not finished buying volleys. */
+      const g = shopping('JUGGLEGAUNTLET', 500);
+      const G = g.PK.Game.G;
+      const gauntlet = g.PK.BOSS_MODIFIERS.find(function (m) { return m.id === 'boss_gauntlet'; });
+      ok(gauntlet, 'THE GAUNTLET is still in the content');
+      G.modifier = gauntlet;
+      G.inFlightBase = 3;
+      eq(g.PK.Game.handSize(), 3, 'the floor dealt three');
+      eq(g.PK.Game.inFlightCap(), 6, 'the run itself still holds six');
+      ok(serviceRate(g, 'juggle', 60) > 0, 'the boss withheld an upgrade it should not');
+    });
+
+  it('the shop reports the hand of the run, not of the floor it cleared',
+    function () {
+      /* The footer reads this number while G.modifier still holds the cleared
+         floor's, so on THE GAUNTLET's shop it used to promise three balls for a
+         floor that will deal six. */
+      const g = shopping('SHOPHAND', 500);
+      const G = g.PK.Game.G;
+      G.modifier = g.PK.BOSS_MODIFIERS.find(function (m) { return m.id === 'boss_gauntlet'; });
+      eq(g.PK.Game.handSize(), 3, 'that floor dealt three');
+      eq(g.PK.Game.runHandSize(), 6, 'the shop still talks about the run');
+    });
+
+  it('a run that already bought past its hand is treated as capped', function () {
+    /* Saves written while the ceiling was the flat 24 can hold a volley bigger
+       than the hand. They are at their cap — and the footer must not read
+       "8 of 6". */
+    const g = shopping('JUGGLELEGACY', 500);
+    const G = g.PK.Game.G;
+    G.inFlightBase = g.PK.Game.runHandSize() + 2;
+    eq(g.PK.Game.inFlightCap(), G.inFlightBase, 'the cap never reads below the volley');
+    eq(serviceRate(g, 'juggle', 60), 0, 'and there is nothing left to sell');
+  });
+
+  it('Bigger Hands is withheld at the cap even when relics got it there',
+    function () {
+      /* The guard used to read handSizeBase alone, so a hand pushed to 24 by
+         relics still saw the offer and paid 11 gold for nothing. */
+      const g = shopping('HANDRELICCAP', 500);
+      const G = g.PK.Game.G;
+      G.relics.push('extra_hand');                       // +1
+      G.handSizeBase = g.PK.Game.MAX_HAND - 1;
+      eq(g.PK.Game.handSize(), g.PK.Game.MAX_HAND, 'already at the cap');
+      eq(serviceRate(g, 'hand', 60), 0, 'Bigger Hands offered at the cap');
+    });
 
   it('reroll costs gold and gets steadily more expensive', function () {
     const g = shopping('REROLL', 100);
@@ -1477,6 +1565,25 @@ describe('shop: holding an offer', function () {
     g.helpers.drop(310);
     g.PK.Game.cashOut();
     eq(ids(g).indexOf('trim'), -1, 'Bag Trim came back despite being unstockable');
+    eq(G.shop.offers.length, 3, 'and the slot was refilled');
+  });
+
+  it('a held Juggling does not smuggle itself past the volley cap', function () {
+    /* Same rule as Bag Trim above, on the cap the player can reach fastest:
+       hold Juggling, buy the last one you needed elsewhere, and the held card
+       must be gone rather than sell a purchase that does nothing. */
+    const g = shop('LOCKJUGGLE');
+    const G = g.PK.Game.G;
+    g.helpers.stockShop([
+      { kind: 'service', id: 'juggle', cost: 5, sold: false, locked: true, data: { name: 'Juggling' } }
+    ]);
+    g.PK.Game.leaveShop();
+    deepEq(G.locked.map(function (o) { return o.id; }), ['juggle'], 'carried');
+    G.inFlightBase = g.PK.Game.inFlightCap();          // now at the hand
+    G.target = 1;
+    g.helpers.drop(310);
+    g.PK.Game.cashOut();
+    eq(ids(g).indexOf('juggle'), -1, 'Juggling came back despite being unstockable');
     eq(G.shop.offers.length, 3, 'and the slot was refilled');
   });
 

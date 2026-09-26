@@ -8,8 +8,9 @@
   /* The ceiling on balls drawn per floor. It exists so a run cannot turn into
      an unbounded grind, not to cut progression short — at 14 a player who kept
      buying Bigger Hands was paying 11 gold for nothing, which is the worst way
-     for a cap to announce itself. The shop now withholds the offer at the cap
-     as well, so the gold is never silently wasted. */
+     for a cap to announce itself. The shop withholds the offer at the cap, and
+     counts the relics adding to the hand when it decides, so the gold is never
+     silently wasted. */
   var MAX_HAND = 24;
   var SHOP_SLOTS = 3;
   var DROP_Y = 76;
@@ -21,10 +22,12 @@
      anything; earning them turns the carnage into a build decision, and a
      late run that has bought enough can throw its whole hand at the board.
 
-     The ceiling is MAX_HAND for exactly that reason — there is no point being
-     able to throw more balls at once than a floor will ever deal you. The
-     engine itself never needed a limit: Multiball has always put a second ball
-     in play, and physics steps each one independently. */
+     There is no point being able to throw more balls at once than a floor
+     will ever deal you, so the shop stops selling Juggling as soon as the
+     volley matches the run's own hand — inFlightCap() is that rule, and
+     MAX_IN_FLIGHT is only the backstop behind it. The engine itself never
+     needed a limit: Multiball has always put a second ball in play, and
+     physics steps each one independently. */
   var BASE_IN_FLIGHT = 1;
   var MAX_IN_FLIGHT = MAX_HAND;
   /* How many landings a shattered peg counts down before it returns.
@@ -81,8 +84,14 @@
 
   /* --------------------------------------------------------------- helpers */
 
+  /* The relics on their own, without the floor's modifier: what the run is
+     carrying rather than what it is standing on. */
+  function relicSources() {
+    return G.relics.map(function (id) { return PK.RELIC_BY_ID[id]; }).filter(Boolean);
+  }
+
   function hookSources() {
-    var list = G.relics.map(function (id) { return PK.RELIC_BY_ID[id]; }).filter(Boolean);
+    var list = relicSources();
     if (G.modifier) list.push(G.modifier);
     return list;
   }
@@ -92,6 +101,21 @@
     hookSources().forEach(function (src) {
       if (typeof src[name] === 'function') src[name].apply(src, [G].concat(args));
     });
+  }
+
+  /* Balls dealt at the start of a floor. One definition, so nothing can
+     promise a hand the game will not deal.
+
+     It takes its sources because a caller sometimes needs to ask about the
+     run rather than about the floor in front of it: two floor modifiers cut
+     the hand — Short Hand takes two, THE GAUNTLET pins it at three — and
+     G.modifier still holds the cleared floor's while the shop is open. */
+  function handSize(sources) {
+    var n = G.handSizeBase;
+    (sources || hookSources()).forEach(function (src) {
+      if (typeof src.handSize === 'function') n = src.handSize(G, n);
+    });
+    return Math.max(1, Math.min(n + mods().hand, MAX_HAND));
   }
 
   function reduceHook(name, value) {
@@ -380,8 +404,7 @@
     G.carryScore = 0;
 
     // Hand
-    var size = reduceHook('handSize', G.handSizeBase) + mods().hand;
-    size = Math.max(1, Math.min(size, MAX_HAND));
+    var size = handSize();
     var shuffled = G.rng.shuffle(G.bag);
     G.hand = shuffled.slice(0, Math.min(size, shuffled.length));
     while (G.hand.length < size) G.hand.push(G.rng.pick(G.bag));   // small bags still fill the hand
@@ -397,6 +420,19 @@
   /** How many balls this run may have in the air at once. */
   function inFlight() {
     return Math.max(1, Math.min(G.inFlightBase, MAX_IN_FLIGHT));
+  }
+
+  /* The most balls it is worth being able to throw at once — the run's own
+     hand, since a floor will never deal more than that. Asked without the
+     floor modifier so a player who has just beaten THE GAUNTLET on three
+     balls is not told they have finished buying volleys.
+
+     Never reported below the volley already bought: a save written while the
+     ceiling was the flat 24 can hold more than its hand, and the shop footer
+     would otherwise read "8 of 6". Those runs are still at their cap, which
+     is what the guard asks. */
+  function inFlightCap() {
+    return Math.max(inFlight(), Math.min(MAX_IN_FLIGHT, handSize(relicSources())));
   }
 
   function canDrop() {
@@ -698,8 +734,8 @@
     });
     Object.keys(SERVICES).forEach(function (id) {
       // Never sell something that cannot do anything.
-      if (id === 'hand' && G.handSizeBase >= MAX_HAND) return;
-      if (id === 'juggle' && G.inFlightBase >= MAX_IN_FLIGHT) return;
+      if (id === 'hand' && handSize(relicSources()) >= MAX_HAND) return;
+      if (id === 'juggle' && G.inFlightBase >= inFlightCap()) return;
       if (id === 'trim' && G.bag.length <= 3) return;
       if (id === 'gild' && G.bag.indexOf('standard') === -1) return;
       var sv = SERVICES[id];
@@ -902,12 +938,12 @@
     hasSave: hasSave,
     resumeRun: resumeRun,
     persist: persist,
-    /* Capped exactly as startFloor caps it, so the shop footer cannot promise
-       a hand the game will not deal. */
-    handSize: function () {
-      return Math.max(1, Math.min(reduceHook('handSize', G.handSizeBase) + mods().hand, MAX_HAND));
-    },
+    handSize: function () { return handSize(); },
+    /* The hand the run itself carries, ignoring the floor it is standing on —
+       what the shop should be talking about, since it sits between floors. */
+    runHandSize: function () { return handSize(relicSources()); },
     inFlight: inFlight,
+    inFlightCap: inFlightCap,
     MAX_HAND: MAX_HAND,
     SERVICES: SERVICES,
     MAX_IN_FLIGHT: MAX_IN_FLIGHT,
