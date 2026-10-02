@@ -275,6 +275,34 @@
 
     save();     // totals must be stored before the tests read them
 
+    return {
+      currency: earned,
+      currencyLabel: p ? p.currency.label : 'points',
+      achievements: testAchievements(gameId, summary)
+    };
+  }
+
+  /**
+   * A run that already ended, still being played. One More Roll's endless
+   * mode is the case: the win is recorded when ante 8 falls, and the player
+   * may keep rolling for as long as they survive — which is where its biggest
+   * turns happen. Those used to be thrown away, because recordRun had already
+   * run once and must not run twice.
+   *
+   * Raises the best and evaluates achievements against the bigger numbers.
+   * Never counts a run or a win and never pays currency: recordRun did all of
+   * that, once, when the run first ended.
+   */
+  function recordBest(gameId, summary) {
+    summary = summary || {};
+    var g = game(gameId);
+    if ((summary.score || 0) > (g.best || 0)) g.best = Math.floor(summary.score || 0);
+    save();
+    return { achievements: testAchievements(gameId, summary) };
+  }
+
+  /** Every untested achievement for this game, tried against a summary. */
+  function testAchievements(gameId, summary) {
     var unlockedNow = [];
     Arcade.achievements.forEach(function (a) {
       if (typeof a.test !== 'function') return;
@@ -284,12 +312,7 @@
       try { pass = !!a.test(summary, state()); } catch (e) { pass = false; }
       if (pass && award(a.id)) unlockedNow.push(a);
     });
-
-    return {
-      currency: earned,
-      currencyLabel: p ? p.currency.label : 'points',
-      achievements: unlockedNow
-    };
+    return unlockedNow;
   }
 
   /* ---------------------------------------------------------------- steam */
@@ -342,7 +365,7 @@
     award: award, hasAchievement: hasAchievement,
     achievementsFor: achievementsFor, achievementProgress: achievementProgress,
     recordClear: recordClear, hasClear: hasClear, clearsFor: clearsFor,
-    recordRun: recordRun,
+    recordRun: recordRun, recordBest: recordBest,
     snapshotForSteam: snapshotForSteam
   };
 })(typeof window !== 'undefined' ? window : this);
