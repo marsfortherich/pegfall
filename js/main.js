@@ -58,6 +58,15 @@
     window.addEventListener('resize', fitCanvas);
   }
 
+  /* Which of the arcade's loops a screen plays, the way One More Roll picks:
+     the menu between runs, play on a floor (boss on a boss floor), the shop's
+     own loop in the shop. */
+  function musicFor(G) {
+    if (G.screen === 'play') return G.modifier && G.modifier.boss ? 'boss' : 'play';
+    if (G.screen === 'shop') return 'shop';
+    return 'menu';
+  }
+
   function start() {
     // Shared account + leaderboard layer. Checks the auth state up front so
     // the HUD knows who is playing before the first ball drops.
@@ -96,6 +105,7 @@
         acc -= STEP;
       }
       PK.Render.draw(ctx, G, t);
+      PK.Sfx.music(musicFor(G));
       requestAnimationFrame(frame);
     }
     requestAnimationFrame(frame);

@@ -337,8 +337,12 @@
         '<button id="set-sfx" class="' + (on ? 'on' : 'off') + '">' + (on ? 'ON' : 'OFF') + '</button></div>' +
         '<div class="setrow"><span>Volume</span>' +
         '<button id="set-vol"' + (on ? '' : ' disabled') + '>' + (idx + 1) + ' / 3</button></div>' +
+        '<div class="setrow"><span>Music</span>' +
+        '<button id="set-music" class="' + (PK.Settings.music ? 'on' : 'off') + '"' + (on ? '' : ' disabled') + '>' +
+        (PK.Settings.music ? 'ON' : 'OFF') + '</button></div>' +
         '</div>' +
-        '<p class="muted small">Sound is synthesised as you play — there are no audio files.</p>' +
+        '<p class="muted small">Sound is synthesised as you play — there are no audio files. ' +
+        'The music is One More Roll\'s, shared across the arcade.</p>' +
         '<div class="shopfoot"><button id="set-back" class="big">BACK</button></div>' +
         '</div>';
     }
@@ -348,6 +352,7 @@
       $('set-sfx').addEventListener('click', function () {
         PK.Sfx.resume();
         PK.setSetting('sfx', !PK.Settings.sfx);
+        PK.Sfx.syncMusic();
         if (PK.Settings.sfx) PK.Sfx.coin();
         draw();
       });
@@ -355,7 +360,15 @@
         PK.Sfx.resume();
         var i = STEPS.indexOf(PK.Settings.volume);
         PK.setSetting('volume', STEPS[(i + 1) % STEPS.length] || STEPS[1]);
+        PK.Sfx.syncMusic();
         PK.Sfx.coin();
+        draw();
+      });
+      $('set-music').addEventListener('click', function () {
+        PK.Sfx.resume();
+        PK.setSetting('music', !PK.Settings.music);
+        PK.Sfx.syncMusic();
+        PK.Sfx.ui();
         draw();
       });
       $('set-back').addEventListener('click', function () {

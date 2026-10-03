@@ -63,6 +63,35 @@
     if (ctx && ctx.state === 'suspended') {
       try { ctx.resume(); } catch (e) { /* nothing to do */ }
     }
+    syncMusic();
+  }
+
+  /* ---------------------------------------------------------------- music
+
+     The arcade's soundtrack — One More Roll's score, from the shared layer
+     (shared/js/arcade-music.js) — played on this context, into the master so
+     the limiter catches it with everything else. The game decides the mode
+     (main.js, from the screen); this decides whether it is heard. Sound OFF
+     silences it with the effects; Music OFF silences only it.
+
+     MUSIC_SHARE sets it under the effects the way One More Roll does: its
+     music sits at about 0.45 of its effects by default. */
+  var MUSIC_SHARE = 0.45;
+  var score = null, wantMode = null;
+
+  function syncMusic() {
+    if (!ctx || broken || !(window.Arcade && window.Arcade.music)) return;
+    if (!score) score = window.Arcade.music.player(ctx, master);
+    var audible = PK.Settings.sfx && PK.Settings.music && PK.Settings.volume > 0;
+    score.level(audible ? PK.Settings.volume * MUSIC_SHARE : 0);
+    score.mode(audible ? wantMode : null);
+  }
+
+  /** 'menu' | 'play' | 'shop' | 'boss' | null. Cheap to call every frame. */
+  function music(mode) {
+    if (mode === wantMode) return;
+    wantMode = mode;
+    syncMusic();
   }
 
   function on() { return ctx && !broken && PK.Settings.sfx && PK.Settings.volume > 0; }
@@ -275,6 +304,10 @@
     ui: ui,
     boss: boss,
     gameOver: gameOver,
+    music: music,
+    syncMusic: syncMusic,
+    /** The loop actually playing, or null — for tests and the desktop self-test. */
+    get musicMode() { return score ? score.current : null; },
     get available() { return !broken; }
   };
 })(window.PK = window.PK || {});

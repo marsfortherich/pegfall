@@ -7,7 +7,8 @@
 
   var DEFAULTS = {
     sfx: true,
-    volume: 0.6
+    volume: 0.6,
+    music: true        // the arcade's soundtrack (One More Roll's), under Sound
   };
 
   var Settings = {};
