@@ -3,7 +3,7 @@
 # It proves a copy is complete and unmodified, NOT that it is current:
 # run `python tools/sync-shared.py --check` at the arcade root for that.
 1d4bcc4f2ee6fb4116504615fab74bf5237da78205dca651f78d3b856c64fe0d  broker.html
-96407304245930b283e2d1fff0152e244e0323cbad4fd349b27b80df351be6db  css/arcade.css
+9fb9bde36748ed0f89d5ef6c51b5ec9bd08a1c37b2c386d06627b9d9450d3a59  css/arcade.css
 c5a4061fcbc4c9f97c50cd6540f17832bd6dbcb54fbcd53e27e142721d4cbb7d  js/arcade-auth.js
 8ee453e32a439ecb8372c85f7a23f1b35674189aa18f20e86da338618a399b28  js/arcade-broker.js
 794704a6e30e45a3a554701207f969b426cf1f4ff74f3aae3ec637c0aadfbbb9  js/arcade-catalogue.js
@@ -11,6 +11,6 @@ ae0b9ebe4ef64daa232fb777e788b064107d267cb0f062cd0d6b43f5cf720ea5  js/arcade-conf
 228601a69ad8cebc3813b3ef4ebb913098826485ce462dad56e2b2e2c4632b0a  js/arcade-dealer.js
 a9f64199fce71493a8a07c5105427031224bbe8af9b9e61a5fad8c261b7c1ee6  js/arcade-progress.js
 a17f91fcf1c91ddcf79b22f4497fbae75bc69f361d5a15f48e4f1270f5b849c4  js/arcade-scores.js
-35272cd967f54853850f9bd446f717166aa9f430813b5bfaea29b176e3abd822  js/arcade-ui.js
+13a1e9fb127e973b38fea90925f83409e15006c94c35c43ee0b4d491e3c46c0e  js/arcade-ui.js
 7d4341e2d6bae434d9fafb3041a0956beada3cb040378bfcc8a41ec18f777899  js/arcade.js
 856877c28126c5ffb4e4b8e407110b4d99ab516be4043f210e24aff49c8b7d85  tools/asset-digest.py

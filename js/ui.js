@@ -209,6 +209,12 @@
     }
   }
 
+  /** A yes/no in the arcade's own dialog; the browser's only without the arcade layer. */
+  function askYesNo(opts) {
+    return window.Arcade && window.Arcade.ui && window.Arcade.ui.confirm
+      ? window.Arcade.ui.confirm(opts) : Promise.resolve(window.confirm(opts.text));
+  }
+
   /**
    * The Descent ladder, as a row of rungs.
    *
@@ -294,11 +300,15 @@
     }
     $('btn-start').addEventListener('click', function () {
       var v = $('seed-input').value.trim();
-      if (saved && !window.confirm('Start a new run? The saved run on floor ' +
-          saved.floor + ' will be discarded.')) return;
-      PK.Sfx.ui();
-      hideOverlay();
-      PK.Game.newRun(v || null, chosen);
+      function start() {
+        PK.Sfx.ui();
+        hideOverlay();
+        PK.Game.newRun(v || null, chosen);
+      }
+      if (!saved) { start(); return; }
+      askYesNo({ title: 'New run', ok: 'Start new run', danger: true,
+        text: 'Start a new run? The saved run on floor ' + saved.floor + ' will be discarded.' })
+        .then(function (yes) { if (yes && $('btn-start')) start(); });   // still on the menu
     });
     $('seed-input').addEventListener('keydown', function (e) {
       if (e.key === 'Enter') $('btn-start').click();

@@ -181,15 +181,26 @@
   /* ---------------------------------------------------------------- modal */
 
   var openModalEl = null;
+  var openModalOnClose = null;
+
+  /* Tell the open modal it is going, whichever way it goes: ×, Escape, the
+     backdrop, its own buttons, or another modal replacing it. */
+  function modalGone() {
+    var fn = openModalOnClose;
+    openModalOnClose = null;
+    if (fn) fn();
+  }
 
   function removeModalNow() {
     if (openModalEl && openModalEl.parentNode) openModalEl.parentNode.removeChild(openModalEl);
     openModalEl = null;
+    modalGone();
   }
 
   /** Dismiss with a fade. Replacing one modal with another skips it. */
   function closeModal() {
     if (!openModalEl) return;
+    modalGone();
     if (!motionOK()) { removeModalNow(); return; }
     var going = openModalEl;
     openModalEl = null;
@@ -200,8 +211,9 @@
   }
 
   /**
-   * @param opts { title, sub, wide, body(bodyEl, api), foot(footEl, api) }
-   * The api handed to the builders is { close, setBody, box }.
+   * @param opts { title, sub, wide, body(bodyEl, api), foot(footEl, api), onClose() }
+   * The api handed to the builders is { close, setBody, box }. onClose runs
+   * once, however the modal is dismissed.
    */
   function modal(opts) {
     removeModalNow();
@@ -250,7 +262,51 @@
     wrap.appendChild(box);
     doc.body.appendChild(wrap);
     openModalEl = wrap;
+    openModalOnClose = opts.onClose || null;
     return api;
+  }
+
+  /**
+   * A yes/no question in the arcade's own modal.
+   *
+   * The games used the browser's confirm(), which ignores their look entirely
+   * — and in the Steam build is a bare Windows dialog over a fullscreen game.
+   * Resolves true only for the confirm button; Cancel, ×, Escape and the
+   * backdrop all resolve false. The caller must re-check its state after the
+   * answer: the question is no longer modal to the game, so the thing asked
+   * about can change while it is open.
+   *
+   * @param opts { title, text, ok, cancel, danger } — or just the text
+   * @returns Promise<boolean>
+   */
+  function confirmBox(opts) {
+    opts = typeof opts === 'string' ? { text: opts } : (opts || {});
+    return new Promise(function (resolve) {
+      var answered = false;
+      function answer(v) {
+        if (answered) return;
+        answered = true;
+        resolve(v);
+      }
+      modal({
+        title: opts.title || 'Are you sure?',
+        onClose: function () { answer(false); },
+        body: function (body) {
+          if (opts.text) body.appendChild(el('p', 'ac-confirm__text', opts.text));
+        },
+        foot: function (foot, api) {
+          var yes = btn(opts.ok || 'OK', opts.danger ? 'ac-btn--danger' : 'ac-btn--primary', function () {
+            answer(true);
+            api.close();
+          });
+          foot.classList.add('ac-confirm__foot');
+          foot.appendChild(btn(opts.cancel || 'Cancel', 'ac-btn--ghost', function () { api.close(); }));
+          foot.appendChild(yes);
+          // Enter confirms, as it did with the browser's dialog
+          global.setTimeout(function () { try { yes.focus(); } catch (e) { /* detached */ } }, 0);
+        }
+      });
+    });
   }
 
   doc.addEventListener('keydown', function (e) {
@@ -1146,6 +1202,7 @@
     showLeaderboard: showLeaderboard,
     showOffline: showOffline,
     inlineActions: inlineActions,
+    confirm: confirmBox,
     toast: toast,
     modal: modal,
     closeModal: closeModal,

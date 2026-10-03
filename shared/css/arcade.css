@@ -547,6 +547,15 @@ html[data-arcade-game="hub"] {
   display: flex; gap: var(--ac-s2); justify-content: center; flex-wrap: wrap;
 }
 
+/* Arcade.ui.confirm: the question, then the foot's Cancel / OK */
+.ac-confirm__text {
+  margin: 0;
+  text-align: center;
+  line-height: 1.5;
+  color: var(--ac-ink-dim);
+}
+.ac-confirm__foot .ac-btn { min-width: 110px; }
+
 /* tabs */
 .ac-tabs {
   display: flex;
