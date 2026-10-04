@@ -2065,6 +2065,66 @@ describe('arcade integration', function () {
   });
 });
 
+/* ============================================================
+   The demo build.
+
+   A demo page carries <meta name="arcade-demo">, and Arcade.isDemo() says
+   so. The demo plays the White Descent to the win on floor 15 and holds the
+   rest of the ladder and the endless dive back. Its run saves under a key of
+   its own, so a full-game run in the same browser is left alone.
+   ============================================================ */
+describe('demo build', function () {
+  function demo(opts) {
+    const g = fresh(Object.assign({ arcade: true }, opts || {}));
+    g.Arcade.demo.active = true;
+    return g;
+  }
+
+  it('plays the White Descent, whatever is asked', function () {
+    const g = demo();
+    g.PK.Game.newRun('DEMO', 5);
+    eq(g.PK.Game.G.stake, 1);
+    ok(g.PK.Game.isDemo(), 'the game knows');
+  });
+
+  it('plays to the win, and holds the endless dive back', function () {
+    const g = demo();
+    g.PK.Game.newRun('DEMOWIN');
+    const G = g.PK.Game.G;
+    let guard = 0;
+    while (!G.won && guard++ < 40) {
+      G.target = 1; G.score = 1;
+      g.PK.Game.cashOut();
+      if (G.screen === 'shop') g.PK.Game.leaveShop();
+    }
+    eq(G.won, true, 'won');
+    eq(G.floor, g.PK.Game.WIN_FLOOR, 'on the win floor');
+    eq(g.bus.victories, 1, 'the banner went up');
+    g.PK.Game.continueEndless();
+    ok(G.screen !== 'shop', 'no shop past the win');
+    g.PK.Game.endRun();
+    eq(G.screen, 'gameover', 'ending the run still works');
+    eq(g.bus.submitted.length, 1, 'and posts once');
+  });
+
+  it('saves apart from the full game, and never touches its run', function () {
+    const full = JSON.stringify({ v: 1, floor: 9, seed: 'FULLRUN' });
+    const g = demo({ storage: { 'pegfall.run.v1': full } });
+    eq(g.PK.Save.hasRun(), false, 'the full run is not offered to the demo');
+    g.PK.Game.newRun('DEMORUN');
+    g.helpers.drop(310);
+    ok(g.localStorage.getItem('pegfall.run.v1.demo'), 'the demo run is saved');
+    eq(g.localStorage.getItem('pegfall.run.v1'), full, 'the full run is untouched');
+  });
+
+  it('switched off, it is the full game', function () {
+    const g = fresh({ arcade: true });
+    eq(g.Arcade.isDemo(), false, 'no marker, no demo');
+    g.PK.Game.newRun('FULL', 3);
+    eq(g.PK.Game.G.stake, 3);
+  });
+});
+
 /* ---------- report ---------- */
 const totalTests = passed + failures.length;
 if (failures.length) {

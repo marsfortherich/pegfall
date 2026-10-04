@@ -315,9 +315,16 @@
 
   /* ------------------------------------------------------------------ run */
 
+  /* A demo build (Arcade.isDemo) plays the base run: the White Descent down
+     to the win, and no further. The rest of the ladder and the endless dive
+     stay on screen, labelled, as the full game's. */
+  function isDemo() {
+    return !!(window.Arcade && window.Arcade.isDemo && window.Arcade.isDemo());
+  }
+
   function newRun(seed, stake) {
     G.meta = G.meta || PK.Save.load();
-    G.stake = Math.max(1, Math.min(stake || 1, PK.STAKES.length));
+    G.stake = isDemo() ? 1 : Math.max(1, Math.min(stake || 1, PK.STAKES.length));
     G.won = false;
     G.endless = true;
     G.seed = (seed || PK.randomSeedWord()).toUpperCase();
@@ -652,6 +659,7 @@
 
   /** Leave the victory banner and keep descending. */
   function continueEndless() {
+    if (isDemo()) return;          // the endless dive is the full game's
     G.endless = true;
     openShop(G.shopGained || 0);
   }
@@ -935,6 +943,7 @@
     hasRelic: hasRelic,
     continueEndless: continueEndless,
     endRun: endRun,
+    isDemo: isDemo,
     stake: function () { return G.stake; },
     stakeMods: mods,
     WIN_FLOOR: WIN_FLOOR,

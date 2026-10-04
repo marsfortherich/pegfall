@@ -3,15 +3,15 @@
 # It proves a copy is complete and unmodified, NOT that it is current:
 # run `python tools/sync-shared.py --check` at the arcade root for that.
 1d4bcc4f2ee6fb4116504615fab74bf5237da78205dca651f78d3b856c64fe0d  broker.html
-9fb9bde36748ed0f89d5ef6c51b5ec9bd08a1c37b2c386d06627b9d9450d3a59  css/arcade.css
+802cca6413aa3f5aba6d5c7b17d1594e53b2a62e2d8ba0497da5981f523d16d1  css/arcade.css
 c5a4061fcbc4c9f97c50cd6540f17832bd6dbcb54fbcd53e27e142721d4cbb7d  js/arcade-auth.js
 8ee453e32a439ecb8372c85f7a23f1b35674189aa18f20e86da338618a399b28  js/arcade-broker.js
 794704a6e30e45a3a554701207f969b426cf1f4ff74f3aae3ec637c0aadfbbb9  js/arcade-catalogue.js
-88d8bc8a5a0c955e0bb2b9441f4b8a3af2e769bfff3d476edc22e02c6620238f  js/arcade-config.js
+224d49d4b87ed7cdce9a1e6d7f66ec75d72d598c832473449232cc5765221760  js/arcade-config.js
 228601a69ad8cebc3813b3ef4ebb913098826485ce462dad56e2b2e2c4632b0a  js/arcade-dealer.js
 0a1ba0bfc74987f3b5dfb2dd91648dfd693246e60adc85c729285d9a2962881e  js/arcade-music.js
 a9f64199fce71493a8a07c5105427031224bbe8af9b9e61a5fad8c261b7c1ee6  js/arcade-progress.js
 a17f91fcf1c91ddcf79b22f4497fbae75bc69f361d5a15f48e4f1270f5b849c4  js/arcade-scores.js
-0647abbc5026304c64b6950e7356587daf2cebbed51db4852c10971528c3263c  js/arcade-ui.js
+9349f9e06eaa6ecc9f113ae3fcbf9ffdc9fd826971b4c617269c5d1a4586f9da  js/arcade-ui.js
 7d4341e2d6bae434d9fafb3041a0956beada3cb040378bfcc8a41ec18f777899  js/arcade.js
 856877c28126c5ffb4e4b8e407110b4d99ab516be4043f210e24aff49c8b7d85  tools/asset-digest.py

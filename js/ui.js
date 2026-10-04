@@ -222,7 +222,9 @@
    * seeing how far it goes. Beating a Descent opens the next.
    */
   function stakeRow(meta) {
-    var unlocked = Math.max(1, meta.unlockedStake || 1);
+    // A demo plays the White Descent; the other rungs are shown as the full game's.
+    var demo = PK.Game.isDemo();
+    var unlocked = demo ? 1 : Math.max(1, meta.unlockedStake || 1);
     var best = meta.bestStake || 0;
     var pick = Math.min(unlocked, PK.STAKES.length);
     return '<div class="stakes" id="stake-row"><label>Descent</label><div class="rungs">' +
@@ -232,10 +234,12 @@
           '" data-stake="' + s.level + '"' + (open ? '' : ' disabled') +
           ' style="--c:' + s.color + '"' +
           ' data-tip="<b>' + esc(s.name) + '</b><br>' + s.desc +
-          (s.level <= best ? '<br><i>Beaten.</i>' : open ? '' : '<br><i>Beat the one before it.</i>') + '"' +
+          (demo && s.level > 1 ? '<br><i>' + esc(window.Arcade.demo.note) + '</i>'
+            : s.level <= best ? '<br><i>Beaten.</i>' : open ? '' : '<br><i>Beat the one before it.</i>') + '"' +
           '>' + s.level + '</button>';
       }).join('') +
-      '</div><span class="stakename" id="stake-name">' +
+      '</div>' + (demo ? window.Arcade.ui.fullGameBadge().outerHTML : '') +
+      '<span class="stakename" id="stake-name">' +
       esc(PK.stakeByLevel(pick).name) + '</span></div>';
   }
 
@@ -276,7 +280,7 @@
 
     /* The chosen rung lives on the button row itself rather than in a
        variable, so re-rendering the menu cannot lose it. */
-    var chosen = Math.max(1, Math.min(meta.unlockedStake || 1, PK.STAKES.length));
+    var chosen = PK.Game.isDemo() ? 1 : Math.max(1, Math.min(meta.unlockedStake || 1, PK.STAKES.length));
     Array.prototype.forEach.call(el.overlay.querySelectorAll('[data-stake]'), function (b) {
       b.addEventListener('click', function () {
         chosen = parseInt(b.dataset.stake, 10);
@@ -522,6 +526,7 @@
     var st = PK.stakeByLevel(PK.Game.stake());
     var meta = G.meta;
     var next = PK.STAKES[st.level];          // the rung above, if there is one
+    var demo = PK.Game.isDemo();
     showOverlay(
       '<div class="card over win">' +
       '<h2>THE BOTTOM</h2>' +
@@ -534,12 +539,17 @@
       '<div><b>' + G.relics.length + '</b><span>relics</span></div>' +
       '</div>' +
       '<p class="muted small">' +
-      (next ? 'Unlocked: <b style="color:' + next.color + '">' + esc(next.name) + '</b> — ' + next.desc
+      (demo && next ? 'Unlocked: <b style="color:' + next.color + '">' + esc(next.name) +
+                      '</b> — yours in the full game, with the endless dive below this floor.'
+       : next ? 'Unlocked: <b style="color:' + next.color + '">' + esc(next.name) + '</b> — ' + next.desc
             : 'Every Descent is beaten. There is nothing below this.') +
       '</p>' +
-      '<p class="muted small">The run does not have to stop. Keep going and the score keeps climbing.</p>' +
+      (demo ? '' : '<p class="muted small">The run does not have to stop. Keep going and the score keeps climbing.</p>') +
       '<div class="shopfoot">' +
-      '<button id="btn-continue-run" class="big">KEEP DESCENDING →</button>' +
+      (demo
+        ? '<button id="btn-continue-run" class="big held" disabled title="' + esc(window.Arcade.demo.note) + '">' +
+          '<span class="held-label">KEEP DESCENDING →</span>' + window.Arcade.ui.fullGameBadge().outerHTML + '</button>'
+        : '<button id="btn-continue-run" class="big">KEEP DESCENDING →</button>') +
       '<button id="btn-win-menu">END THE RUN</button>' +
       '</div></div>', false);
 

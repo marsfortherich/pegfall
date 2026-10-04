@@ -1025,3 +1025,26 @@ html[data-arcade-game="hub"] {
 @media (prefers-reduced-motion: reduce) {
   .ac-switch-btn__track, .ac-switch-btn__track::after { transition: none; }
 }
+
+/* ------------------------------------------------------------ demo builds
+
+   What a demo holds back stays on screen, greyed out, with this badge — the
+   same pill in all three games, so "Full game" reads as the arcade speaking
+   rather than as each game's own lock. Games append it to the locked choice;
+   it is decoration, so it never takes a click. */
+.ac-fullgame {
+  display: inline-block;
+  padding: 2px 7px;
+  border: 1px solid var(--ac-gold);
+  border-radius: var(--ac-r-pill);
+  background: rgba(0, 0, 0, .45);
+  color: var(--ac-gold);
+  font: 800 var(--ac-fs-micro)/1.4 var(--ac-font-ui);
+  letter-spacing: var(--ac-track-caps);
+  text-transform: uppercase;
+  white-space: nowrap;
+  vertical-align: middle;
+  pointer-events: none;
+}
+/* The way to the full game, beside the arcade's own buttons. */
+.ac-btn--store { text-decoration: none; color: var(--ac-gold); }

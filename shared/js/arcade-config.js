@@ -220,6 +220,31 @@
     hubPath: 'hub/index.html'
   };
 
+  /* --------------------------------------------------------------------
+     4. Demo builds
+
+     A demo is the full game with its choices narrowed: the base run to the
+     win, on the first difficulty, with the starting deck and wheel. Nothing
+     is removed — what the demo holds back stays on screen, greyed out and
+     labelled, so a player can see what the full game adds.
+
+     tools/build-demo.py marks every demo page with
+     <meta name="arcade-demo">. No page in a game's own repo carries it, so a
+     full build can never narrow itself by accident. Games ask isDemo() at the
+     moment they decide something, never at load, which is also what lets a
+     test switch it on.
+     -------------------------------------------------------------------- */
+  Arcade.demo = {
+    active: (function () {
+      try { return !!global.document.querySelector('meta[name="arcade-demo"]'); }
+      catch (e) { return false; }
+    })(),
+    label: 'Full game',
+    note: 'Available in the full game: Dealer’s Choice on Steam.',
+    storeUrl: 'https://store.steampowered.com/app/5377090/'
+  };
+  Arcade.isDemo = function () { return !!(Arcade.demo && Arcade.demo.active); };
+
   Arcade.isConfigured = function () {
     var c = Arcade.firebaseConfig;
     return !!(c && c.apiKey && c.apiKey !== 'REPLACE_ME' && c.projectId &&

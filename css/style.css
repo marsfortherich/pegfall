@@ -515,3 +515,13 @@ button:focus-visible { outline: 2px solid var(--ac-gold); outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) {
   .bump, .fill.done { animation: none; }
 }
+
+/* ---- Demo builds ---------------------------------------------------------
+   A choice the demo holds back (the other Descents, the endless dive) is
+   shown, not hidden: dimmed like a locked one, with the arcade's "Full game"
+   pill at full strength. A disabled button fades everything inside it, so a
+   held one dims only its label. */
+.stakes .ac-fullgame { margin-left: 8px; }
+button.held:disabled { opacity: 1; }
+button.held .held-label { opacity: 0.45; }
+button.held .ac-fullgame { margin-left: 10px; }

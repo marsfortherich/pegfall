@@ -1193,6 +1193,17 @@
       row.appendChild(home);
     }
 
+    /* A demo's way to the full game, beside the way home. A link, so the
+       desktop build opens it in the player's browser like any other. */
+    if (Arcade.isDemo && Arcade.isDemo() && Arcade.demo.storeUrl) {
+      var store = el('a', 'ac-btn ac-btn--sm ac-btn--store', 'Full game on Steam');
+      store.href = Arcade.demo.storeUrl;
+      store.target = '_blank';
+      store.rel = 'noopener noreferrer';
+      store.title = Arcade.demo.note;
+      row.appendChild(store);
+    }
+
     row.appendChild(btn(opts.leaderboardLabel || 'Leaderboard', 'ac-btn--sm', function () {
       showLeaderboard(opts.gameId || currentGameId);
     }));
@@ -1223,8 +1234,21 @@
     return row;
   }
 
+  /**
+   * The "Full game" pill a demo puts on every choice it holds back — a deck,
+   * a wheel, a difficulty, endless. Each game greys the choice out in its own
+   * look; the pill is the part that reads the same everywhere.
+   */
+  function fullGameBadge() {
+    var d = Arcade.demo || {};
+    var b = el('span', 'ac-fullgame', d.label || 'Full game');
+    if (d.note) b.title = d.note;
+    return b;
+  }
+
   Arcade.ui = {
     mountBar: mountBar,
+    fullGameBadge: fullGameBadge,
     setSound: setSound,
     setSettings: setSettings,
     countUp: countUp,

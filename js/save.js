@@ -62,18 +62,26 @@
      a floor — so there is never a half-fallen ball to reconstruct. */
 
   var RUN_KEY = 'pegfall.run.v1';
+
+  /* A demo build (Arcade.isDemo) keeps its run under a key of its own, so a
+     full-game run already in this browser is neither resumed into the demo
+     nor thrown away by it. Asked at each call, never cached at load. */
+  function runKey() {
+    var demo = window.Arcade && window.Arcade.isDemo && window.Arcade.isDemo();
+    return demo ? RUN_KEY + '.demo' : RUN_KEY;
+  }
   var RUN_VERSION = 1;
 
   function saveRun(snapshot) {
     try {
       snapshot.v = RUN_VERSION;
-      localStorage.setItem(RUN_KEY, JSON.stringify(snapshot));
+      localStorage.setItem(runKey(), JSON.stringify(snapshot));
     } catch (e) { /* file:// or private mode: the run just will not resume */ }
   }
 
   function loadRun() {
     try {
-      var raw = localStorage.getItem(RUN_KEY);
+      var raw = localStorage.getItem(runKey());
       if (!raw) return null;
       var data = JSON.parse(raw);
       // A save from an older build describes a board this build may no longer
@@ -86,7 +94,7 @@
   }
 
   function clearRun() {
-    try { localStorage.removeItem(RUN_KEY); } catch (e) { /* nothing to do */ }
+    try { localStorage.removeItem(runKey()); } catch (e) { /* nothing to do */ }
   }
 
   function hasRun() { return !!loadRun(); }
