@@ -607,6 +607,11 @@
       G.carryScore = 0;
       startFloor();
     } else {
+      // The floor that fell short still counts toward the run's total. Banked
+      // here, not in gameOver(): the victory banner's End run also ends there,
+      // on a floor the branch above has already banked.
+      G.meta.totalScore += G.score;
+      G.stats.runTotal += G.score;
       gameOver();
     }
   }
@@ -660,8 +665,6 @@
 
   function gameOver() {
     G.screen = 'gameover';
-    G.meta.totalScore += G.score;
-    G.stats.runTotal += G.score;
     PK.Save.save(G.meta);
     PK.Save.clearRun();
     PK.Sfx.gameOver();

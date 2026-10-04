@@ -959,6 +959,63 @@ describe('winning', function () {
     eq(R.floor, g2.PK.Game.WIN_FLOOR + 1, 'and on down');
   });
 
+  /* Clearing the win floor banks it, and End run on the banner goes through
+     gameOver(). gameOver() used to bank the floor's score too — right for a
+     floor that fell short, wrong for one already banked — so the boss floor
+     reached the leaderboard twice. */
+  function wonWithKnownScores(g, perFloor) {
+    const G = g.PK.Game.G;
+    let banked = 0;
+    while (!G.won) {
+      G.target = 1; G.score = perFloor; banked += perFloor;
+      g.PK.Game.cashOut();
+      if (G.screen === 'shop') g.PK.Game.leaveShop();
+    }
+    return banked;
+  }
+
+  it('ending a won run from the banner posts every floor once', function () {
+    const g = fresh({ arcade: true });
+    g.PK.Game.newRun('ENDRUN', 1);
+    const G = g.PK.Game.G;
+    const banked = wonWithKnownScores(g, 1000);
+    eq(G.floor, g.PK.Game.WIN_FLOOR, 'won on the win floor');
+    eq(G.stats.runTotal, banked, 'the win floor banked once');
+
+    g.PK.Game.endRun();
+    eq(G.screen, 'gameover');
+    eq(G.stats.runTotal, banked, 'End run adds nothing');
+    eq(g.bus.submitted.length, 1, 'one submission');
+    eq(g.bus.submitted[0].payload.score, banked, 'the leaderboard gets the true total');
+    eq(g.bus.recorded[0].summary.score, banked, 'and so does the progression record');
+  });
+
+  it('the same after resuming on the banner', function () {
+    const g = fresh({ arcade: true });
+    g.PK.Game.newRun('ENDRESUME', 1);
+    const banked = wonWithKnownScores(g, 1000);
+
+    const g2 = fresh({ arcade: true, storage: g.localStorage._store });
+    eq(g2.PK.Game.resumeRun(), true, 'resumed');
+    eq(g2.bus.screen, 'victory', 'onto the banner');
+    g2.PK.Game.endRun();
+    eq(g2.bus.submitted[0].payload.score, banked, 'still the true total');
+  });
+
+  it('a run that dies banks the floor that fell short, once', function () {
+    const g = fresh({ arcade: true });
+    g.PK.Game.newRun('SHORTFALL', 1);
+    const G = g.PK.Game.G;
+    G.target = 1; G.score = 1000;
+    g.PK.Game.cashOut();
+    g.PK.Game.leaveShop();
+    G.target = 1e9;
+    g.helpers.playFloor(310);
+    eq(G.screen, 'gameover');
+    ok(G.score > 0, 'the failed floor scored something');
+    eq(g.bus.submitted[0].payload.score, 1000 + G.score, 'banked floor plus the short one');
+  });
+
   it('a run that dies short of the floor is not a win', function () {
     const g = fresh({ arcade: true });
     g.PK.Game.newRun('LOSE', 1);

@@ -182,9 +182,14 @@
     for (var i = 0; i < all.length; i++) if (all[i].id === id) return all[i];
     return all[0];
   };
-  /** Where a metric is stored on the entry document. */
+  /** Where a metric is stored on the entry document.
+
+      Resolved through metricById, so a missing or unknown id means the primary
+      metric here too. It used to build 'metrics.undefined' instead — a field
+      no row has — and every rank asked without a metric came back #1. */
   Arcade.metricField = function (game, id) {
-    return id === Arcade.primaryMetric(game).id ? 'score' : 'metrics.' + id;
+    var m = Arcade.metricById(game, id);
+    return m.id === Arcade.primaryMetric(game).id ? 'score' : 'metrics.' + m.id;
   };
 
   Arcade.gameById = function (id) {
