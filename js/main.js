@@ -77,6 +77,8 @@
       window.Arcade.ui.setSound({
         ui: PK.Sfx.ui, success: PK.Sfx.buy, deny: PK.Sfx.deny, achievement: PK.Sfx.cleared
       });
+      // the bar's Settings opens this game's own, over whatever is on screen
+      if (window.Arcade.ui.setSettings) window.Arcade.ui.setSettings(PK.UI.settingsFromBar);
     }
 
     // Browsers refuse to start an AudioContext before a gesture, and they

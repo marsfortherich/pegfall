@@ -323,7 +323,25 @@
      controls used to sit loose on the menu card; they live in Settings now, so
      the title screen is a title screen and not a control panel. */
 
-  function showSettings(fromMenu) {
+  /* Settings from the arcade bar, over whatever is on screen: the shop, the
+     menu, a banner, or the bare board. The overlay's own nodes are set aside —
+     listeners and all — and put back on Back, so the player returns to exactly
+     what they left. */
+  function settingsFromBar() {
+    if ($('set-back')) return;                       // already open
+    var kept = Array.prototype.slice.call(el.overlay.childNodes);
+    var wasHidden = el.overlay.classList.contains('hidden');
+    var dismissable = el.overlay.dataset.dismissable;
+    showSettings(false, function () {
+      el.overlay.innerHTML = '';
+      kept.forEach(function (n) { el.overlay.appendChild(n); });
+      el.overlay.classList.toggle('hidden', wasHidden);
+      if (dismissable === undefined) delete el.overlay.dataset.dismissable;
+      else el.overlay.dataset.dismissable = dismissable;
+    });
+  }
+
+  function showSettings(fromMenu, back) {
     var STEPS = [0.3, 0.6, 1];
 
     function body() {
@@ -373,7 +391,8 @@
       });
       $('set-back').addEventListener('click', function () {
         PK.Sfx.ui();
-        if (fromMenu) showMenu(); else hideOverlay();
+        if (back) back();
+        else if (fromMenu) showMenu(); else hideOverlay();
       });
     }
     draw();
@@ -582,6 +601,7 @@
     showGameOver: showGameOver,
     showMenu: showMenu,
     showSettings: showSettings,
+    settingsFromBar: settingsFromBar,
     showHelp: showHelp,
     showToast: showToast,
     hideOverlay: hideOverlay

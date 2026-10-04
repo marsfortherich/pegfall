@@ -88,6 +88,40 @@
   function setSound(impl) {
     Object.keys(impl || {}).forEach(function (k) { sound[k] = impl[k]; });
   }
+  /**
+   * The game's own settings, from the bar.
+   *
+   * Each game already has a settings screen, but it sat behind its own menu —
+   * Options in One More Roll, the menu in PEGFALL, the sidebar in No Limit —
+   * so changing the volume mid-run meant finding it. A game hands its opener
+   * here: Arcade.ui.setSettings(open). The bar then carries a Settings button
+   * that calls it; the screen, its look and what Back returns to stay the
+   * game's. The hub has nothing to set, registers nothing, and shows no button.
+   */
+  var settingsOpener = null;
+  function setSettings(open) {
+    settingsOpener = typeof open === 'function' ? open : null;
+    placeSettingsButton();
+  }
+  function placeSettingsButton() {
+    if (!bar) return;
+    var b = bar._settings;
+    if (!settingsOpener) { if (b) b.style.display = 'none'; return; }
+    if (!b) {
+      b = el('button', 'ac-bar__btn', 'Settings');
+      b.type = 'button';
+      b.title = 'Sound, speed and display';
+      b.dataset.ac = 'settings';
+      b.addEventListener('click', function () {
+        play('ui');
+        try { if (settingsOpener) settingsOpener(); } catch (e) { /* the game's screen, not ours to break */ }
+      });
+      bar.insertBefore(b, bar._account);
+      bar._settings = b;
+    }
+    b.style.display = '';
+  }
+
   function play(name) {
     var fn = sound[name];
     if (typeof fn !== 'function') return;
@@ -1077,6 +1111,7 @@
     });
     bar.appendChild(account);
     bar._account = account;
+    placeSettingsButton();     // a game may have registered before the bar mounted
 
     doc.body.appendChild(bar);
     refreshBar();
@@ -1191,6 +1226,7 @@
   Arcade.ui = {
     mountBar: mountBar,
     setSound: setSound,
+    setSettings: setSettings,
     countUp: countUp,
     flash: flash,
     motionOK: motionOK,
