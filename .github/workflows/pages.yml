@@ -76,6 +76,13 @@ jobs:
       # NOTE: Pages must already be switched on for this repo, under
       # Settings -> Pages -> Source: GitHub Actions.
       - uses: actions/configure-pages@v5
+      # The website is the demo (DEMO_PLAN.md at the arcade root). This repo
+      # stays the full game -- the Steam build is assembled from it -- so the
+      # page is marked here, at publish time, after every check above has read
+      # it unmarked. Remove this step to publish the full game again.
+      - name: Publish as the demo
+        run: python3 shared/tools/mark-demo.py index.html
+
       - uses: actions/upload-pages-artifact@v3
         with:
           path: '.'

@@ -1195,9 +1195,10 @@
 
     /* A demo's way to the full game, beside the way home. A link, so the
        desktop build opens it in the player's browser like any other. */
-    if (Arcade.isDemo && Arcade.isDemo() && Arcade.demo.storeUrl) {
-      var store = el('a', 'ac-btn ac-btn--sm ac-btn--store', 'Full game on Steam');
-      store.href = Arcade.demo.storeUrl;
+    if (Arcade.isDemo && Arcade.isDemo() && Arcade.demo.storeLink) {
+      var to = Arcade.demo.storeLink();
+      var store = el('a', 'ac-btn ac-btn--sm ac-btn--store', to.label);
+      store.href = to.href;
       store.target = '_blank';
       store.rel = 'noopener noreferrer';
       store.title = Arcade.demo.note;
