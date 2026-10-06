@@ -348,6 +348,18 @@
 
   load();
 
+  /* Another tab of this site saved: take its state. Each tab loads the store
+     once and writes all of it back on every change, so without this a second
+     tab's next save wrote back the stale copy it had loaded and erased
+     whatever the first tab had earned since. */
+  if (typeof global.addEventListener === 'function') {
+    global.addEventListener('storage', function (e) {
+      if (e.key !== KEY) return;
+      load();
+      emit();
+    });
+  }
+
   Arcade.progress = {
     state: state, save: save, reset: reset,
     onChange: function (fn) {

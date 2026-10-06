@@ -43,6 +43,13 @@
     }, { passive: false });
 
     window.addEventListener('keydown', function (e) {
+      // Keys typed into the arcade's forms, or pressed over its dialogs, are
+      // not the board's: a space in a display name used to drop a ball.
+      if (window.Arcade && window.Arcade.ui && window.Arcade.ui.claimsKeys &&
+          window.Arcade.ui.claimsKeys(e)) return;
+      // nor over this game's own overlay (Settings, How to Play) above the board
+      var overlay = document.getElementById('overlay');
+      if (overlay && !overlay.classList.contains('hidden')) return;
       if (e.key === ' ') {
         e.preventDefault();
         PK.Game.dropBall(G.aimX);
@@ -85,6 +92,12 @@
     // suspend it again whenever the tab loses focus, so this is not `once`.
     window.addEventListener('pointerdown', PK.Sfx.resume);
     window.addEventListener('keydown', PK.Sfx.resume);
+
+    // Another tab saved the records: take them, or this tab's next save would
+    // write back the copy it loaded and erase what that tab earned.
+    window.addEventListener('storage', function (e) {
+      if (e.key === PK.Save.META_KEY && PK.Game.G.meta) PK.Game.G.meta = PK.Save.load();
+    });
 
     canvas = document.getElementById('board');
     ctx = canvas.getContext('2d');

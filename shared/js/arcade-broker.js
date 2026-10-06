@@ -29,6 +29,10 @@
   var seq = 0;
   var pending = {};
   var startPromise = null;
+  // The local implementations install() replaced; fallback() puts them back.
+  var originals = null;
+  var AUTH_METHODS = ['init', 'signIn', 'register', 'signOut', 'sendReset', 'setDisplayName'];
+  var SCORE_METHODS = ['submit', 'board', 'rankOf', 'myStandings', 'renameEntries'];
 
   function brokerUrl() {
     var cfg = Arcade.sso || {};
@@ -56,7 +60,13 @@
   /* ------------------------------------------------------------------ rpc */
 
   function call(method, args) {
-    if (!active()) return Promise.reject(new Error('BROKER_DOWN'));
+    if (failed) return Promise.reject(new Error('BROKER_DOWN'));
+    if (!ready) {
+      // Asked before the broker has answered: wait for it, rather than fail
+      // a player who signed in during the first second of a page.
+      if (!startPromise) return Promise.reject(new Error('BROKER_DOWN'));
+      return startPromise.then(function () { return call(method, args); });
+    }
     var id = ++seq;
     return new Promise(function (resolve, reject) {
       var timer = global.setTimeout(function () {
@@ -83,6 +93,9 @@
   function onMessage(e) {
     if (!e.data || e.data[TAG] !== 1) return;
     if (frameOrigin && e.origin !== frameOrigin) return;
+    // A broker that answers after the fallback took over must not overwrite
+    // the local session's state.
+    if (failed) return;
 
     if (e.data.event === 'ready' || e.data.event === 'auth') {
       if (e.data.state) Arcade.auth._adopt(e.data.state);
@@ -146,8 +159,34 @@
     if (global.console && global.console.warn) {
       global.console.warn('[arcade] shared sign-in unavailable (' + why + '); using a sign-in local to this site.');
     }
+    /* Put the local implementations back first. This used to call
+       Arcade.auth.init() while it still pointed at the broker, so the local
+       session never started, and sign-in and score posts kept going to the
+       dead broker: the fallback promised a sign-in it never gave. */
+    if (originals) {
+      Arcade.auth._override(originals.auth);
+      SCORE_METHODS.forEach(function (k) { Arcade.scores[k] = originals.scores[k]; });
+    }
     Arcade.auth.init();
     return Promise.resolve(false);
+  }
+
+  /**
+   * A broker-backed method that survives the broker giving up mid-call: if
+   * the fallback took over while it waited, the call goes to the local
+   * implementation it restored. Otherwise orElse(err, args) answers, or the
+   * error stands.
+   */
+  function routed(ns, name, toBroker, orElse) {
+    var self = function () {
+      var args = arguments;
+      return toBroker.apply(null, args).catch(function (err) {
+        if (failed && ns[name] !== self) return ns[name].apply(ns, args);
+        if (orElse) return orElse(err, args);
+        throw err;
+      });
+    };
+    return self;
   }
 
   /* --------------------------------------------------- method replacements */
@@ -157,59 +196,61 @@
    * bar, the dialogs, the games — keeps calling exactly what it called before.
    */
   function install() {
-    Arcade.auth._override({
+    if (originals) return;
+    originals = { auth: {}, scores: {} };
+    AUTH_METHODS.forEach(function (k) { originals.auth[k] = Arcade.auth[k]; });
+    SCORE_METHODS.forEach(function (k) { originals.scores[k] = Arcade.scores[k]; });
+
+    var auth = Arcade.auth, scores = Arcade.scores;
+    auth._override({
       init: function () { return start(); },
-      signIn: function (email, password) {
-        return call('signIn', { email: email, password: password })
-          .then(adopt);
-      },
-      register: function (email, password, displayName) {
+      signIn: routed(auth, 'signIn', function (email, password) {
+        return call('signIn', { email: email, password: password }).then(adopt);
+      }),
+      register: routed(auth, 'register', function (email, password, displayName) {
         return call('register', { email: email, password: password, displayName: displayName })
           .then(adopt);
-      },
-      signOut: function () { return call('signOut').then(adopt); },
-      sendReset: function (email) { return call('sendReset', { email: email }); },
-      setDisplayName: function (name) {
+      }),
+      signOut: routed(auth, 'signOut', function () { return call('signOut').then(adopt); }),
+      sendReset: routed(auth, 'sendReset', function (email) { return call('sendReset', { email: email }); }),
+      setDisplayName: routed(auth, 'setDisplayName', function (name) {
         return call('setDisplayName', { name: name }).then(function (r) {
           adopt(r.state);
           return r.name;
         });
-      }
+      })
     });
 
-    var localBoard = Arcade.scores.board;
-    Arcade.scores.submit = function (gameId, payload, meta) {
+    var localBoard = originals.scores.board;
+    scores.submit = routed(scores, 'submit', function (gameId, payload, meta) {
       var score = payload, metrics = null;
       if (payload && typeof payload === 'object') {
         score = payload.score;
         metrics = payload.metrics;
         if (meta === undefined) meta = payload.meta;
       }
-      return call('submit', { gameId: gameId, score: score, metrics: metrics, meta: meta })
-        .catch(function (err) { return { ok: false, error: describeBroker(err) }; });
-    };
-    Arcade.scores.board = function (gameId, topN, metricId) {
-      return call('board', { gameId: gameId, topN: topN, metricId: metricId })
-        .catch(function (err) {
-          // A board is public, so a broken broker should not hide it: read it
-          // straight from this origin instead.
-          if (Arcade.fb && Arcade.fb.db) return localBoard(gameId, topN, metricId);
-          return { rows: [], you: null, error: describeBroker(err) };
-        });
-    };
-    Arcade.scores.rankOf = function (gameId, score, metricId) {
-      return call('rankOf', { gameId: gameId, score: score, metricId: metricId })
-        .catch(function () { return null; });
-    };
-    Arcade.scores.myStandings = function () {
+      return call('submit', { gameId: gameId, score: score, metrics: metrics, meta: meta });
+    }, function (err) { return { ok: false, error: describeBroker(err) }; });
+    scores.board = routed(scores, 'board', function (gameId, topN, metricId) {
+      return call('board', { gameId: gameId, topN: topN, metricId: metricId });
+    }, function (err, args) {
+      // A board is public, so a broken broker should not hide it: read it
+      // straight from this origin instead, when this origin has a session.
+      if (Arcade.fb && Arcade.fb.db) return localBoard(args[0], args[1], args[2]);
+      return { rows: [], you: null, error: describeBroker(err) };
+    });
+    scores.rankOf = routed(scores, 'rankOf', function (gameId, score, metricId) {
+      return call('rankOf', { gameId: gameId, score: score, metricId: metricId });
+    }, function () { return null; });
+    scores.myStandings = routed(scores, 'myStandings', function () {
       return call('myStandings').then(function (rows) {
         return rows.map(function (r) {
           return { game: Arcade.gameById(r.gameId), entry: r.entry };
         });
-      }).catch(function () { return []; });
-    };
+      });
+    }, function () { return []; });
     // The broker renames the rows itself inside setDisplayName.
-    Arcade.scores.renameEntries = function () { return Promise.resolve(); };
+    scores.renameEntries = function () { return Promise.resolve(); };
   }
 
   function adopt(state) {
@@ -227,6 +268,7 @@
   Arcade.broker = {
     shouldUse: shouldUse,
     active: active,
+    failed: function () { return failed; },
     start: function () { install(); return start(); },
     call: call
   };

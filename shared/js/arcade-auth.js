@@ -315,7 +315,11 @@
     OFFLINE: 'The arcade is not configured yet — playing offline.',
     NAME_LENGTH: 'Your name needs 3 to 20 characters.',
     NAME_CHARS: 'Letters, numbers, spaces, . - and ’ only, please.',
-    SIGNED_OUT: 'You are signed out.'
+    SIGNED_OUT: 'You are signed out.',
+    /* The shared sign-in (arcade-broker.js). Its own errors used to reach the
+       dialog as the raw code. */
+    BROKER_TIMEOUT: 'The arcade account service did not respond. Try again.',
+    BROKER_DOWN: 'Shared sign-in is unavailable on this site right now.'
   };
 
   function describe(err) {
@@ -333,7 +337,13 @@
        hub's origin. It must not force the direct path, or asking "who is
        playing?" would start a second, origin-local session. */
     ready: function () {
-      if (!Arcade.broker || !Arcade.broker.active()) init();
+      /* Only a page without the broker -- or one whose broker gave up --
+         runs a session of its own. This used to ask whether the broker was
+         *active*, which it never is at boot, so every game site started a
+         second, origin-local Firebase session beside the broker's, and the
+         two raced to set the signed-in state. */
+      var b = Arcade.broker;
+      if (!b || !b.shouldUse() || b.failed()) init();
       return readyPromise;
     },
     get state() { return state; },

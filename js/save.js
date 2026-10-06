@@ -100,6 +100,7 @@
   function hasRun() { return !!loadRun(); }
 
   PK.Save = {
+    META_KEY: KEY,
     load: load, save: save, unlockedBalls: unlockedBalls, nextUnlock: nextUnlock, UNLOCKS: UNLOCKS,
     saveRun: saveRun, loadRun: loadRun, clearRun: clearRun, hasRun: hasRun
   };

@@ -376,6 +376,33 @@
         form.setAttribute('novalidate', 'novalidate');
         body.appendChild(form);
 
+        /* What the tab on screen drew. render() rebuilds the form's contents
+           on every tab switch; the form itself, and its one submit listener,
+           stay. A listener added per render used to pile up, so a later
+           Enter sent one sign-in per tab switch, from fields long gone. */
+        var current = null;
+
+        form.addEventListener('submit', function (e) {
+          e.preventDefault();
+          var f = current;
+          if (!f) return;
+          f.errBox.className = 'ac-error ac-hidden';
+          f.submit.disabled = true;
+
+          var p = f.tab === 'register'
+            ? Arcade.auth.register(f.emailInput.value, f.passInput.value, f.nameInput.value)
+            : Arcade.auth.signIn(f.emailInput.value, f.passInput.value);
+
+          p.then(function () {
+            api.close();
+            toast('Signed in as ' + Arcade.auth.displayName(), 'good');
+          }).catch(function (err) {
+            if (current !== f) return;      // the player switched tabs meanwhile
+            f.fail(Arcade.auth.describe(err));
+            f.submit.disabled = false;
+          });
+        });
+
         function render() {
           tSignIn.setAttribute('aria-selected', tab === 'signin' ? 'true' : 'false');
           tRegister.setAttribute('aria-selected', tab === 'register' ? 'true' : 'false');
@@ -428,24 +455,8 @@
             errBox.textContent = msg;
           }
 
-          form.addEventListener('submit', function (e) {
-            e.preventDefault();
-            errBox.className = 'ac-error ac-hidden';
-            submit.disabled = true;
-            var done = function () { submit.disabled = false; };
-
-            var p = tab === 'register'
-              ? Arcade.auth.register(emailInput.value, passInput.value, nameInput.value)
-              : Arcade.auth.signIn(emailInput.value, passInput.value);
-
-            p.then(function () {
-              api.close();
-              toast('Signed in as ' + Arcade.auth.displayName(), 'good');
-            }).catch(function (err) {
-              fail(Arcade.auth.describe(err));
-              done();
-            });
-          });
+          current = { tab: tab, errBox: errBox, nameInput: nameInput, emailInput: emailInput,
+                      passInput: passInput, submit: submit, fail: fail };
         }
 
         tSignIn.addEventListener('click', function () { tab = 'signin'; render(); });
@@ -1236,6 +1247,23 @@
   }
 
   /**
+   * Does this key belong to the arcade's chrome rather than the game?
+   *
+   * True when it is typed into a text field -- the sign-in, register and
+   * rename forms -- or pressed while an arcade dialog is open. Every game asks
+   * this before its own shortcuts: without it, typing a display name with an
+   * "r" in it rerolled One More Roll's dice, a space dropped one of PEGFALL's
+   * balls, and Space spun No Limit's wheel behind a dialog.
+   */
+  function claimsKeys(e) {
+    var t = e && e.target;
+    var tag = t && t.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
+    if (t && t.isContentEditable) return true;
+    return !!openModalEl;
+  }
+
+  /**
    * The "Full game" pill a demo puts on every choice it holds back — a deck,
    * a wheel, a difficulty, endless. Each game greys the choice out in its own
    * look; the pill is the part that reads the same everywhere.
@@ -1250,6 +1278,7 @@
   Arcade.ui = {
     mountBar: mountBar,
     fullGameBadge: fullGameBadge,
+    claimsKeys: claimsKeys,
     setSound: setSound,
     setSettings: setSettings,
     countUp: countUp,
