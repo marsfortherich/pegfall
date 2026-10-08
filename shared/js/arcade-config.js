@@ -241,18 +241,23 @@
     })(),
     label: 'Full game',
     note: 'Available in the full game: Dealer’s Choice on Steam.',
-    storeUrl: 'https://store.steampowered.com/app/5377090/',
-    /* Until the store page is public its URL only redirects to Steam's front
-       page, so the demo's links go to the studio's page about the game
-       instead. Set true the day the store page is live. */
-    storeLive: false,
-    comingSoonUrl: 'https://marsindustries.dev/#dealers-choice'
+    storeUrl: 'https://store.steampowered.com/app/5377090/Dealers_Choice/',
+    /* The store page is public (2026-10-08). While it was not, its URL only
+       redirected to Steam's front page, so the demo's links went to the
+       studio's page about the game instead; set false to go back to that. */
+    storeLive: true,
+    comingSoonUrl: 'https://marsindustries.dev/#dealers-choice',
+    /* Release day, UTC. Before it the store link asks for a wishlist, after
+       it for the full game -- no redeploy on the day. Move it if the date
+       moves on Steam. */
+    releaseDate: '2026-10-22'
   };
   /** Where a demo's "get the full game" links point, and what they say. */
-  Arcade.demo.storeLink = function () {
-    return Arcade.demo.storeLive
-      ? { href: Arcade.demo.storeUrl, label: 'Full game on Steam' }
-      : { href: Arcade.demo.comingSoonUrl, label: 'Coming soon to Steam' };
+  Arcade.demo.storeLink = function (now) {
+    var d = Arcade.demo;
+    if (!d.storeLive) return { href: d.comingSoonUrl, label: 'Coming soon to Steam' };
+    var released = d.releaseDate && (now || Date.now()) >= Date.parse(d.releaseDate + 'T00:00:00Z');
+    return { href: d.storeUrl, label: released ? 'Full game on Steam' : 'Wishlist on Steam' };
   };
   Arcade.isDemo = function () { return !!(Arcade.demo && Arcade.demo.active); };
 
