@@ -525,3 +525,42 @@ button:focus-visible { outline: 2px solid var(--ac-gold); outline-offset: 2px; }
 button.held:disabled { opacity: 1; }
 button.held .held-label { opacity: 0.45; }
 button.held .ac-fullgame { margin-left: 10px; }
+
+/* ---- Phones ----------------------------------------------------------------
+   Below 900px the board is sized to fit its area both ways, keeping its shape:
+   it used to be sized by height alone, so on a phone it was wider than the
+   screen and both 10x slots fell off the edges. Input already maps through
+   the canvas's on-screen box, so aiming needs no change.
+
+   Below 640px (phones) the page scrolls: the board keeps the screen, and the
+   run panel -- floor, gold, relics, bag -- follows it instead of vanishing.
+   None of this reaches the desktop or Steam windows. */
+@media (max-width: 900px) {
+  /* The stage centres its children, so the wrap needs its own full width:
+     a size container takes none from its content. */
+  .boardwrap { container-type: size; align-items: flex-start; width: 100%; align-self: stretch; }
+  canvas#board {
+    height: auto;
+    max-height: none;
+    width: min(100cqw, calc(100cqh * 620 / 706));
+  }
+}
+@media (max-width: 640px) {
+  html, body { height: auto; min-height: 100%; overflow-y: auto; }
+  #app {
+    height: auto;
+    min-height: 100%;
+    padding: calc(var(--ac-bar-h) + 10px) 8px 8px;
+    gap: 8px;
+  }
+  /* A phone held upright is always narrower than the board's shape, so the
+     board simply takes the width, and the hand sits right under it. */
+  .stage { height: auto; }
+  .boardwrap { container-type: normal; flex: 0 0 auto; }
+  canvas#board { width: 100%; }
+  .modifier { padding-right: 12px; }
+  .panel.left { display: block; order: 2; overflow: visible; }
+  .stakes { flex-wrap: wrap; row-gap: 6px; }
+  .overlay { padding: calc(var(--ac-bar-h) + 10px) 8px 8px; align-items: flex-start; overflow-y: auto; }
+  .card { padding: 18px 14px; }
+}

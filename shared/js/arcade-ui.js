@@ -1007,6 +1007,32 @@
   function toggleSwitcher() {
     if (switcher) { closeSwitcher(); return; }
     switcher = el('div', 'ac-switch ac-root');
+
+    /* On a phone the bar keeps only the menu and the account button (see
+       arcade.css), so what it folds away is listed here instead. Hidden
+       wherever the bar has room for its own buttons. */
+    var phone = el('div', 'ac-switch__phone');
+    var phoneItem = function (label, sub, action) {
+      var b = el('button', 'ac-switch__item');
+      b.type = 'button';
+      b.appendChild(el('span', 'ac-switch__glyph', '\u25C6'));
+      var l = el('span', null, label);
+      l.appendChild(el('span', 'ac-switch__sub', sub));
+      b.appendChild(l);
+      b.addEventListener('click', function () { closeSwitcher(); action(); });
+      phone.appendChild(b);
+    };
+    phoneItem('Progress', 'unlocks, achievements, clears', function () { showProgress(currentGameId); });
+    phoneItem('Leaderboard', 'the best runs', function () { showLeaderboard(currentGameId); });
+    if (settingsOpener) {
+      phoneItem('Settings', 'sound, speed, display', function () {
+        play('ui');
+        try { settingsOpener(); } catch (e) { /* the game's screen */ }
+      });
+    }
+    phone.appendChild(el('div', 'ac-switch__sep'));
+    switcher.appendChild(phone);
+
     switcher.appendChild(el('div', 'ac-switch__title ac-cap', 'Roguelike Arcade'));
     Arcade.games.forEach(function (g) {
       var href = gameHref(g);
@@ -1104,17 +1130,20 @@
 
     var prog = el('button', 'ac-bar__btn', 'Progress');
     prog.type = 'button';
+    prog.dataset.ac = 'progress';
     prog.title = 'Unlocks, achievements and difficulty clears';
     prog.addEventListener('click', function () { showProgress(currentGameId); });
     bar.appendChild(prog);
 
     var lb = el('button', 'ac-bar__btn', 'Leaderboard');
     lb.type = 'button';
+    lb.dataset.ac = 'leaderboard';
     lb.addEventListener('click', function () { showLeaderboard(currentGameId); });
     bar.appendChild(lb);
 
     var account = el('button', 'ac-bar__btn');
     account.type = 'button';
+    account.dataset.ac = 'account';
     account.addEventListener('click', function () {
       if (!Arcade.isConfigured()) showOffline();
       else if (Arcade.auth.isSignedIn()) showAccount();
@@ -1275,10 +1304,72 @@
     return b;
   }
 
+  /* --------------------------------------------------------------- touch
+
+     The games put "sell" and "take a chip back" on right-click. A phone has
+     no right-click: Android turns a long press into a contextmenu event, iOS
+     Safari never does. So on a touch screen a long press is turned into one
+     here, at the document, and every game's right-click works by touch with
+     no change to the game. If the browser sends its own contextmenu during
+     the press, that one is used and this one stands down -- never both. The
+     tap that would follow the press is cancelled, so a long press on a card
+     sells it without also clicking it. */
+  function longPressAsContextMenu() {
+    var LONG = 600, SLOP = 10;
+    var press = null;
+    doc.addEventListener('touchstart', function (e) {
+      if (e.touches.length !== 1) { press = null; return; }
+      var t = e.touches[0];
+      var p = press = { x: t.clientX, y: t.clientY, target: e.target, fired: false, native: false, timer: 0 };
+      p.timer = global.setTimeout(function () {
+        if (press !== p || p.native) return;
+        p.fired = true;
+        p.target.dispatchEvent(new global.MouseEvent('contextmenu', {
+          bubbles: true, cancelable: true, clientX: p.x, clientY: p.y, button: 2
+        }));
+      }, LONG);
+    }, { passive: true });
+    doc.addEventListener('touchmove', function (e) {
+      if (!press) return;
+      var t = e.touches[0];
+      if (Math.abs(t.clientX - press.x) > SLOP || Math.abs(t.clientY - press.y) > SLOP) {
+        global.clearTimeout(press.timer);
+        press = null;
+      }
+    }, { passive: true });
+    doc.addEventListener('touchend', function (e) {
+      if (!press) return;
+      global.clearTimeout(press.timer);
+      if (press.fired && e.cancelable) e.preventDefault();   // no click after the press
+      press = null;
+    }, { passive: false });
+    doc.addEventListener('touchcancel', function () {
+      if (press) global.clearTimeout(press.timer);
+      press = null;
+    });
+    // the browser's own long-press contextmenu (Android) wins
+    doc.addEventListener('contextmenu', function (e) {
+      if (press && e.isTrusted) press.native = true;
+    }, true);
+  }
+  /** True when the primary pointer is a finger, so a hint should say "tap"
+      and "long-press" where it would say "click" and "right-click". A laptop
+      with a touch screen and a mouse still answers false. */
+  function isTouch() {
+    try { return !!global.matchMedia('(pointer: coarse)').matches; }
+    catch (e) { return false; }
+  }
+
+  if (doc && doc.addEventListener && global.MouseEvent &&
+      ('ontouchstart' in global || (global.navigator && global.navigator.maxTouchPoints > 0))) {
+    longPressAsContextMenu();
+  }
+
   Arcade.ui = {
     mountBar: mountBar,
     fullGameBadge: fullGameBadge,
     claimsKeys: claimsKeys,
+    isTouch: isTouch,
     setSound: setSound,
     setSettings: setSettings,
     countUp: countUp,

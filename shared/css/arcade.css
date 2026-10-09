@@ -1048,3 +1048,51 @@ html[data-arcade-game="hub"] {
 }
 /* The way to the full game, beside the arcade's own buttons. */
 .ac-btn--store { text-decoration: none; color: var(--ac-gold); }
+
+/* ------------------------------------------------------------------ phones
+
+   Below 640px -- phones, never the desktop or Steam windows -- the bar keeps
+   only the menu and the account button; Progress, Leaderboard and Settings
+   move into the menu (.ac-switch__phone). A long name is cut short rather
+   than pushing the bar off the screen. */
+.ac-switch__phone { display: none; }
+.ac-switch__item {
+  display: flex;
+  align-items: center;
+  gap: var(--ac-s2);
+  width: 100%;
+  padding: 8px;
+  border: 0;
+  border-radius: var(--ac-r-sm);
+  background: none;
+  color: var(--ac-ink);
+  font: inherit;
+  font-size: var(--ac-fs-sm);
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+.ac-switch__item:hover { background: var(--ac-surface-2); }
+.ac-switch__item .ac-switch__sub { display: block; }
+
+@media (max-width: 640px) {
+  .ac-bar { top: 6px; right: 6px; padding: 4px; }
+  .ac-bar__brand { margin-right: 2px; }
+  /* the caret is the only way to Progress and Leaderboard here: a thumb-sized target */
+  .ac-bar__caret { width: 32px; height: 32px; font-size: 12px; }
+  .ac-bar [data-ac="progress"],
+  .ac-bar [data-ac="leaderboard"],
+  .ac-bar [data-ac="settings"] { display: none; }
+  .ac-bar__btn { padding: 6px 10px; }
+  .ac-bar__btn--signed span:last-child {
+    max-width: 92px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .ac-switch { top: 46px; right: 6px; width: min(260px, calc(100vw - 12px)); max-height: calc(100vh - 56px); overflow-y: auto; }
+  .ac-switch__phone { display: block; }
+}
+
+/* A long press is the right-click of a touch screen (arcade-ui.js turns it
+   into one); keep the phone's own copy/lookup callout out of its way. */
+@media (pointer: coarse) {
+  body { -webkit-touch-callout: none; }
+}
